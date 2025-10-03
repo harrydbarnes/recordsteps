@@ -118,14 +118,16 @@ function updateClickCount(clicks) {
 }
 
 // Listen for updates
-chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (namespace !== 'local') return;
-  
-  if (changes.clicks) {
-    updateClickCount(changes.clicks.newValue || []);
-  }
-  if (changes.isRecording) {
-    isRecording = changes.isRecording.newValue;
-    updateUI();
-  }
-});
+if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace !== 'local') return;
+    
+    if (changes.clicks) {
+      updateClickCount(changes.clicks.newValue || []);
+    }
+    if (changes.isRecording) {
+      isRecording = changes.isRecording.newValue;
+      updateUI();
+    }
+  });
+}
