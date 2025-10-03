@@ -2,10 +2,11 @@
   "manifest_version": 3,
   "name": "Record Steps",
   "version": "1.0",
-  "description": "Records clicks, keyboard actions and timing for automation",
+  "description": "Records clicks, keyboard actions and timing for aiding automation",
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "storage"
   ],
   "action": {
     "default_popup": "popup.html"
