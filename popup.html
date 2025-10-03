@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      width: 320px;
+      padding: 16px;
+      font-family: Arial, sans-serif;
+    }
+    h2 {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      margin: 6px 0;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    #startBtn {
+      background: #4CAF50;
+      color: white;
+    }
+    #stopBtn {
+      background: #f44336;
+      color: white;
+    }
+    #downloadBtn {
+      background: #2196F3;
+      color: white;
+    }
+    #clearBtn {
+      background: #9E9E9E;
+      color: white;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    #status {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      text-align: center;
+      font-weight: 600;
+    }
+    .recording {
+      background: #ffebee;
+      color: #c62828;
+    }
+    .idle {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+    #clickCount {
+      margin: 10px 0;
+      font-size: 14px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <h2>Click Recorder</h2>
+  <div id="status" class="idle">Ready to Record</div>
+  <div id="clickCount">Clicks recorded: 0</div>
+  <button id="startBtn">Start Recording</button>
+  <button id="stopBtn" disabled>Stop Recording</button>
+  <button id="downloadBtn">Download Recording</button>
+  <button id="clearBtn">Clear Recording</button>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
