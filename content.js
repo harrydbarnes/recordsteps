@@ -62,11 +62,56 @@ function getSelector(element) {
   return path.join(' > ');
 }
 
+// Save action to storage
+function saveAction(actionData) {
+  chrome.storage.local.get(['clicks'], (result) => {
+    const clicks = result.clicks || [];
+    clicks.push(actionData);
+    chrome.storage.local.set({ clicks });
+  });
+}
+
+// Show visual feedback
+function showFeedback(x, y, color = '#ff0000') {
+  const indicator = document.createElement('div');
+  indicator.style.cssText = `
+    position: fixed;
+    top: ${y - 10}px;
+    left: ${x - 10}px;
+    width: 20px;
+    height: 20px;
+    border: 3px solid ${color};
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 999999;
+    animation: pulse 0.5s ease-out;
+  `;
+  
+  if (!document.getElementById('recorder-style')) {
+    const style = document.createElement('style');
+    style.id = 'recorder-style';
+    style.textContent = `
+      @keyframes pulse {
+        0% { transform: scale(1); opacity: 1; }
+        100% { transform: scale(2); opacity: 0; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  document.body.appendChild(indicator);
+  
+  setTimeout(() => {
+    indicator.remove();
+  }, 500);
+}
+
 // Record click event
 document.addEventListener('click', (e) => {
   if (!isRecording) return;
   
   const clickData = {
+    type: 'click',
     timestamp: Date.now(),
     relativeTime: startTime ? Date.now() - startTime : 0,
     element: {
@@ -77,7 +122,8 @@ document.addEventListener('click', (e) => {
       text: e.target.textContent?.trim().substring(0, 100) || null,
       href: e.target.href || null,
       type: e.target.type || null,
-      name: e.target.name || null
+      name: e.target.name || null,
+      value: e.target.value || null
     },
     position: {
       x: e.clientX,
@@ -92,40 +138,100 @@ document.addEventListener('click', (e) => {
     }
   };
   
-  // Save to storage
-  chrome.storage.local.get(['clicks'], (result) => {
-    const clicks = result.clicks || [];
-    clicks.push(clickData);
-    chrome.storage.local.set({ clicks });
-  });
+  saveAction(clickData);
+  showFeedback(e.clientX, e.clientY, '#ff0000');
+}, true);
+
+// Record keyboard input (typing)
+document.addEventListener('input', (e) => {
+  if (!isRecording) return;
   
-  // Visual feedback
-  const indicator = document.createElement('div');
-  indicator.style.cssText = `
-    position: fixed;
-    top: ${e.clientY - 10}px;
-    left: ${e.clientX - 10}px;
-    width: 20px;
-    height: 20px;
-    border: 3px solid #ff0000;
-    border-radius: 50%;
-    pointer-events: none;
-    z-index: 999999;
-    animation: pulse 0.5s ease-out;
-  `;
+  const inputData = {
+    type: 'input',
+    timestamp: Date.now(),
+    relativeTime: startTime ? Date.now() - startTime : 0,
+    element: {
+      tagName: e.target.tagName,
+      id: e.target.id || null,
+      className: e.target.className || null,
+      selector: getSelector(e.target),
+      type: e.target.type || null,
+      name: e.target.name || null,
+      placeholder: e.target.placeholder || null
+    },
+    inputType: e.inputType,
+    data: e.data,
+    value: e.target.value,
+    url: window.location.href
+  };
   
-  const style = document.createElement('style');
-  style.textContent = `
-    @keyframes pulse {
-      0% { transform: scale(1); opacity: 1; }
-      100% { transform: scale(2); opacity: 0; }
-    }
-  `;
-  document.head.appendChild(style);
-  document.body.appendChild(indicator);
+  saveAction(inputData);
   
-  setTimeout(() => {
-    indicator.remove();
-    style.remove();
-  }, 500);
+  // Get element position for feedback
+  const rect = e.target.getBoundingClientRect();
+  showFeedback(rect.left + 10, rect.top + 10, '#00ff00');
+}, true);
+
+// Record paste events
+document.addEventListener('paste', (e) => {
+  if (!isRecording) return;
+  
+  const pasteData = {
+    type: 'paste',
+    timestamp: Date.now(),
+    relativeTime: startTime ? Date.now() - startTime : 0,
+    element: {
+      tagName: e.target.tagName,
+      id: e.target.id || null,
+      className: e.target.className || null,
+      selector: getSelector(e.target),
+      type: e.target.type || null,
+      name: e.target.name || null
+    },
+    pastedText: e.clipboardData?.getData('text') || null,
+    url: window.location.href
+  };
+  
+  saveAction(pasteData);
+  
+  // Get element position for feedback
+  const rect = e.target.getBoundingClientRect();
+  showFeedback(rect.left + 10, rect.top + 10, '#0000ff');
+}, true);
+
+// Record keydown for special keys (Enter, Tab, etc.)
+document.addEventListener('keydown', (e) => {
+  if (!isRecording) return;
+  
+  // Only record special keys, not regular typing (that's handled by 'input' event)
+  const specialKeys = ['Enter', 'Tab', 'Escape', 'Backspace', 'Delete', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+  
+  if (specialKeys.includes(e.key)) {
+    const keyData = {
+      type: 'keypress',
+      timestamp: Date.now(),
+      relativeTime: startTime ? Date.now() - startTime : 0,
+      element: {
+        tagName: e.target.tagName,
+        id: e.target.id || null,
+        className: e.target.className || null,
+        selector: getSelector(e.target),
+        type: e.target.type || null,
+        name: e.target.name || null
+      },
+      key: e.key,
+      code: e.code,
+      ctrlKey: e.ctrlKey,
+      shiftKey: e.shiftKey,
+      altKey: e.altKey,
+      metaKey: e.metaKey,
+      url: window.location.href
+    };
+    
+    saveAction(keyData);
+    
+    // Get element position for feedback
+    const rect = e.target.getBoundingClientRect();
+    showFeedback(rect.left + 10, rect.top + 10, '#ffff00');
+  }
 }, true);
