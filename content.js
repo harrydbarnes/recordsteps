@@ -20,7 +20,84 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
-// Generate unique selector for element
+// Get comprehensive element information
+function getElementInfo(element) {
+  const info = {
+    tagName: element.tagName,
+    id: element.id || null,
+    className: element.className || null,
+    classList: element.classList ? Array.from(element.classList) : [],
+    selector: getSelector(element),
+    attributes: {},
+    text: element.textContent?.trim().substring(0, 200) || null,
+    innerText: element.innerText?.trim().substring(0, 200) || null,
+    value: element.value || null,
+    href: element.href || null,
+    src: element.src || null,
+    alt: element.alt || null,
+    title: element.title || null,
+    type: element.type || null,
+    name: element.name || null,
+    placeholder: element.placeholder || null,
+    role: element.getAttribute('role') || null,
+    ariaLabel: element.getAttribute('aria-label') || null,
+    dataAttributes: {}
+  };
+  
+  // Capture all standard attributes
+  if (element.attributes) {
+    for (let attr of element.attributes) {
+      info.attributes[attr.name] = attr.value;
+      
+      // Capture data-* attributes separately for easy access
+      if (attr.name.startsWith('data-')) {
+        info.dataAttributes[attr.name] = attr.value;
+      }
+    }
+  }
+  
+  // Get computed styles that might be useful
+  const computedStyle = window.getComputedStyle(element);
+  info.styles = {
+    display: computedStyle.display,
+    visibility: computedStyle.visibility,
+    position: computedStyle.position,
+    zIndex: computedStyle.zIndex
+  };
+  
+  // Get element dimensions and position
+  const rect = element.getBoundingClientRect();
+  info.boundingBox = {
+    top: rect.top,
+    left: rect.left,
+    width: rect.width,
+    height: rect.height,
+    right: rect.right,
+    bottom: rect.bottom
+  };
+  
+  // Get parent information for context
+  if (element.parentElement) {
+    info.parent = {
+      tagName: element.parentElement.tagName,
+      id: element.parentElement.id || null,
+      className: element.parentElement.className || null,
+      selector: getSelector(element.parentElement)
+    };
+  }
+  
+  // For form elements, capture form context
+  if (element.form) {
+    info.form = {
+      id: element.form.id || null,
+      name: element.form.name || null,
+      action: element.form.action || null,
+      method: element.form.method || null
+    };
+  }
+  
+  return info;
+}
 function getSelector(element) {
   if (element.id) {
     return `#${element.id}`;
@@ -114,17 +191,7 @@ document.addEventListener('click', (e) => {
     type: 'click',
     timestamp: Date.now(),
     relativeTime: startTime ? Date.now() - startTime : 0,
-    element: {
-      tagName: e.target.tagName,
-      id: e.target.id || null,
-      className: e.target.className || null,
-      selector: getSelector(e.target),
-      text: e.target.textContent?.trim().substring(0, 100) || null,
-      href: e.target.href || null,
-      type: e.target.type || null,
-      name: e.target.name || null,
-      value: e.target.value || null
-    },
+    element: getElementInfo(e.target),
     position: {
       x: e.clientX,
       y: e.clientY,
@@ -150,15 +217,7 @@ document.addEventListener('input', (e) => {
     type: 'input',
     timestamp: Date.now(),
     relativeTime: startTime ? Date.now() - startTime : 0,
-    element: {
-      tagName: e.target.tagName,
-      id: e.target.id || null,
-      className: e.target.className || null,
-      selector: getSelector(e.target),
-      type: e.target.type || null,
-      name: e.target.name || null,
-      placeholder: e.target.placeholder || null
-    },
+    element: getElementInfo(e.target),
     inputType: e.inputType,
     data: e.data,
     value: e.target.value,
@@ -180,14 +239,7 @@ document.addEventListener('paste', (e) => {
     type: 'paste',
     timestamp: Date.now(),
     relativeTime: startTime ? Date.now() - startTime : 0,
-    element: {
-      tagName: e.target.tagName,
-      id: e.target.id || null,
-      className: e.target.className || null,
-      selector: getSelector(e.target),
-      type: e.target.type || null,
-      name: e.target.name || null
-    },
+    element: getElementInfo(e.target),
     pastedText: e.clipboardData?.getData('text') || null,
     url: window.location.href
   };
@@ -211,14 +263,7 @@ document.addEventListener('keydown', (e) => {
       type: 'keypress',
       timestamp: Date.now(),
       relativeTime: startTime ? Date.now() - startTime : 0,
-      element: {
-        tagName: e.target.tagName,
-        id: e.target.id || null,
-        className: e.target.className || null,
-        selector: getSelector(e.target),
-        type: e.target.type || null,
-        name: e.target.name || null
-      },
+      element: getElementInfo(e.target),
       key: e.key,
       code: e.code,
       ctrlKey: e.ctrlKey,
