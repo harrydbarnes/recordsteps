@@ -8,14 +8,22 @@ const status = document.getElementById('status');
 const clickCount = document.getElementById('clickCount');
 
 // Load state on popup open
-chrome.storage.local.get(['isRecording', 'clicks'], (result) => {
-  if (chrome.runtime.lastError) {
-    console.error('Error loading state:', chrome.runtime.lastError);
-    return;
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.get(['isRecording', 'clicks'], (result) => {
+      if (chrome.runtime.lastError) {
+        console.error('Error loading state:', chrome.runtime.lastError);
+        return;
+      }
+      isRecording = result.isRecording || false;
+      updateUI();
+      updateClickCount(result.clicks || []);
+    });
+  } else {
+    console.error('Chrome storage API not available');
+    updateUI();
+    updateClickCount([]);
   }
-  isRecording = result.isRecording || false;
-  updateUI();
-  updateClickCount(result.clicks || []);
 });
 
 startBtn.addEventListener('click', () => {
