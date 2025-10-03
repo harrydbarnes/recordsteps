@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Click Recorder",
+  "name": "Record Steps",
   "version": "1.0",
-  "description": "Records clicks and timing for automation",
+  "description": "Records clicks, keyboard actions and timing for automation",
   "permissions": [
     "activeTab",
     "scripting"
