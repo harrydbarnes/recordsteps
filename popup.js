@@ -9,6 +9,10 @@ const clickCount = document.getElementById('clickCount');
 
 // Load state on popup open
 chrome.storage.local.get(['isRecording', 'clicks'], (result) => {
+  if (chrome.runtime.lastError) {
+    console.error('Error loading state:', chrome.runtime.lastError);
+    return;
+  }
   isRecording = result.isRecording || false;
   updateUI();
   updateClickCount(result.clicks || []);
@@ -16,29 +20,51 @@ chrome.storage.local.get(['isRecording', 'clicks'], (result) => {
 
 startBtn.addEventListener('click', () => {
   isRecording = true;
-  chrome.storage.local.set({ isRecording: true });
-  chrome.runtime.sendMessage({ action: 'startRecording' });
+  chrome.storage.local.set({ isRecording: true }, () => {
+    if (chrome.runtime.lastError) {
+      console.error('Error saving state:', chrome.runtime.lastError);
+    }
+  });
+  chrome.runtime.sendMessage({ action: 'startRecording' }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.error('Error sending message:', chrome.runtime.lastError);
+    }
+  });
   updateUI();
 });
 
 stopBtn.addEventListener('click', () => {
   isRecording = false;
-  chrome.storage.local.set({ isRecording: false });
-  chrome.runtime.sendMessage({ action: 'stopRecording' });
+  chrome.storage.local.set({ isRecording: false }, () => {
+    if (chrome.runtime.lastError) {
+      console.error('Error saving state:', chrome.runtime.lastError);
+    }
+  });
+  chrome.runtime.sendMessage({ action: 'stopRecording' }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.error('Error sending message:', chrome.runtime.lastError);
+    }
+  });
   updateUI();
 });
 
 downloadBtn.addEventListener('click', () => {
   chrome.storage.local.get(['clicks'], (result) => {
+    if (chrome.runtime.lastError) {
+      console.error('Error loading clicks:', chrome.runtime.lastError);
+      alert('Error loading recorded data');
+      return;
+    }
+    
     const clicks = result.clicks || [];
     if (clicks.length === 0) {
-      alert('No clicks recorded yet!');
+      alert('No actions recorded yet!');
       return;
     }
     
     const data = {
       recording: clicks,
-      totalClicks: clicks.length,
+      totalActions: clicks.length,
       duration: clicks.length > 0 ? clicks[clicks.length - 1].timestamp - clicks[0].timestamp : 0,
       recordedAt: new Date().toISOString()
     };
@@ -54,9 +80,14 @@ downloadBtn.addEventListener('click', () => {
 });
 
 clearBtn.addEventListener('click', () => {
-  if (confirm('Clear all recorded clicks?')) {
-    chrome.storage.local.set({ clicks: [] });
-    updateClickCount([]);
+  if (confirm('Clear all recorded actions?')) {
+    chrome.storage.local.set({ clicks: [] }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('Error clearing data:', chrome.runtime.lastError);
+      } else {
+        updateClickCount([]);
+      }
+    });
   }
 });
 
@@ -75,11 +106,13 @@ function updateUI() {
 }
 
 function updateClickCount(clicks) {
-  clickCount.textContent = `Clicks recorded: ${clicks.length}`;
+  clickCount.textContent = `Actions recorded: ${clicks.length}`;
 }
 
 // Listen for updates
-chrome.storage.onChanged.addListener((changes) => {
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace !== 'local') return;
+  
   if (changes.clicks) {
     updateClickCount(changes.clicks.newValue || []);
   }
