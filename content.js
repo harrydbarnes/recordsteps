@@ -9,7 +9,7 @@ chrome.storage.local.get(['isRecording'], (result) => {
   }
 });
 
-// Listen for messages from popup
+// Listen for messages from popup and background
 chrome.runtime.onMessage.addListener((message) => {
   if (message.action === 'startRecording') {
     isRecording = true;
@@ -17,6 +17,17 @@ chrome.runtime.onMessage.addListener((message) => {
   } else if (message.action === 'stopRecording') {
     isRecording = false;
     startTime = null;
+  } else if (message.action === 'pageLoad') {
+    if (!isRecording) return;
+
+    const loadData = {
+      type: 'pageLoad',
+      relativeTime: startTime ? Date.now() - startTime : 0,
+      url: message.url,
+      title: document.title,
+    };
+
+    saveAction(loadData);
   }
 });
 

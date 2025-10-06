@@ -1,0 +1,54 @@
+import os
+from playwright.sync_api import sync_playwright, expect
+
+def test_page_load_tracking():
+    # Path to the extension directory
+    extension_path = os.path.abspath(".")
+
+    with sync_playwright() as p:
+        # Launch a persistent context with the extension loaded
+        context = p.chromium.launch_persistent_context(
+            "",  # An empty string for user_data_dir creates a temporary directory
+            headless=True,
+            channel="chromium",
+            args=[
+                f"--disable-extensions-except={extension_path}",
+                f"--load-extension={extension_path}",
+            ],
+        )
+
+        # 1. Test navigation to trigger the webNavigation listener
+        page = context.new_page()
+        page.goto("https://example.com")
+        expect(page).to_have_title("Example Domain")
+
+        # 2. Verify the extension popup still loads correctly
+        # Get the extension ID
+        service_worker = context.service_workers[0]
+        if not service_worker:
+            service_worker = context.wait_for_event("serviceworker")
+
+        extension_id = service_worker.url.split('/')[2]
+
+        # Go to the popup page
+        popup_page = context.new_page()
+        popup_page.goto(f"chrome-extension://{extension_id}/popup.html")
+
+        # Verify the main heading is visible
+        heading = popup_page.locator("h2")
+        expect(heading).to_have_text("Click Recorder")
+
+        # Verify the 'Start Recording' button is present
+        start_button = popup_page.locator("#startBtn")
+        expect(start_button).to_be_visible()
+        expect(start_button).to_have_text("Start Recording")
+
+        # 3. Take a screenshot of the popup for visual confirmation
+        popup_page.screenshot(path="jules-scratch/verification/popup_after_nav.png")
+
+        # Close the context
+        context.close()
+
+# Run the test
+test_page_load_tracking()
+print("Verification script for page load tracking executed successfully.")
