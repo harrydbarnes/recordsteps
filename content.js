@@ -76,7 +76,6 @@ function getShadowDOMPath(element) {
     const info = {
       tagName: current.tagName,
       id: current.id || null,
-      className: current.className || null,
       selector: getSelector(current),
       hasShadowRoot: !!current.shadowRoot
     };
@@ -128,7 +127,6 @@ function getShadowDOMSnapshot(element) {
         shadowInfo.childElements.push({
           tagName: child.tagName,
           id: child.id || null,
-          className: child.className || null,
           attributes: Array.from(child.attributes).map(attr => ({
             name: attr.name,
             value: attr.value
@@ -159,8 +157,6 @@ function getElementInfo(element) {
   const info = {
     tagName: element.tagName,
     id: element.id || null,
-    className: element.className || null,
-    classList: element.classList ? Array.from(element.classList) : [],
     selector: getSelector(element),
     shadowDOMPath: getShadowDOMPath(element),
     attributes: {},
@@ -193,32 +189,11 @@ function getElementInfo(element) {
     }
   }
   
-  // Get computed styles that might be useful
-  const computedStyle = window.getComputedStyle(element);
-  info.styles = {
-    display: computedStyle.display,
-    visibility: computedStyle.visibility,
-    position: computedStyle.position,
-    zIndex: computedStyle.zIndex
-  };
-  
-  // Get element dimensions and position
-  const rect = element.getBoundingClientRect();
-  info.boundingBox = {
-    top: rect.top,
-    left: rect.left,
-    width: rect.width,
-    height: rect.height,
-    right: rect.right,
-    bottom: rect.bottom
-  };
-  
   // Get parent information for context
   if (element.parentElement) {
     info.parent = {
       tagName: element.parentElement.tagName,
       id: element.parentElement.id || null,
-      className: element.parentElement.className || null,
       selector: getSelector(element.parentElement)
     };
     
@@ -383,11 +358,7 @@ document.addEventListener('click', (e) => {
       pageX: e.pageX,
       pageY: e.pageY
     },
-    url: window.location.href,
-    viewport: {
-      width: window.innerWidth,
-      height: window.innerHeight
-    }
+    url: window.location.href
   };
   
   saveAction(clickData);
