@@ -33,7 +33,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         }
         // ONLY after we are sure the content script is ready, we perform the state change.
-        await chrome.storage.local.set({ isRecording: true, startTime: Date.now(), clicks: [] });
+        // This is non-destructive and preserves the clicks array.
+        await chrome.storage.local.set({ isRecording: true, startTime: Date.now() });
         sendResponse({ success: true });
       } catch (e) {
         console.error(`Error starting recording: ${e.message}`);

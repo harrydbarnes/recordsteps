@@ -19,7 +19,8 @@
   function getSelector(element) {
     if (element.id) return `#${element.id}`;
     if (element.className) {
-      const classes = String(element.className).trim().split(/\s+/).join('.');
+      const className = (typeof element.className === 'string') ? element.className : (element.className.baseVal || '');
+      const classes = className.trim().split(/\s+/).join('.');
       if (classes) {
         const selector = `${element.tagName.toLowerCase()}.${classes}`;
         try {
@@ -74,7 +75,7 @@
       selector: getSelector(element),
       shadowDOMPath: getShadowDOMPath(element),
       tagName: element.tagName,
-      className: String(element.className),
+      className: (typeof element.className === 'string') ? element.className : (element.className.baseVal || ''),
       id: element.id || null,
       textContent: element.textContent ? element.textContent.trim().substring(0, 200) : null,
       value: element.value !== undefined ? element.value : null,
