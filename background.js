@@ -36,6 +36,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         console.error(`Error stopping recording: ${e.message}`);
         sendResponse({ success: false, error: e.message });
       }
+    } else if (message.action === 'recordAction') {
+      try {
+        // Get the current clicks, add the new one, and save it back.
+        const { clicks } = await chrome.storage.local.get('clicks');
+        const newClicks = [...(clicks || []), message.data];
+        await chrome.storage.local.set({ clicks: newClicks });
+        sendResponse({ success: true });
+      } catch (e) {
+        console.error(`Error recording action: ${e.message}`);
+        sendResponse({ success: false, error: e.message });
+      }
     }
   })();
 
