@@ -26,8 +26,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         sendResponse({ success: true });
       } catch (e) {
-        console.error(`Error starting recording: ${e.message}`);
-        sendResponse({ success: false, error: e.message });
+        // The script may have already been injected. This is not a fatal error.
+        if (e.message.includes('already injected')) {
+          console.log('Content script was already injected.');
+          sendResponse({ success: true });
+        } else {
+          console.error(`Error starting recording: ${e.message}`);
+          sendResponse({ success: false, error: e.message });
+        }
       }
     } else if (message.action === 'stopRecording') {
       try {

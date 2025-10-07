@@ -51,10 +51,17 @@
   function getShadowDOMPath(element) {
     const path = [];
     let current = element;
-    if (!current || !(current.getRootNode() instanceof ShadowRoot)) return path;
-    while (current && current.getRootNode() instanceof ShadowRoot) {
-      path.unshift(getSelector(current));
-      current = current.getRootNode().host;
+    // Ascend from the element's location
+    while (current && current.parentElement) {
+      const root = current.getRootNode();
+      if (root instanceof ShadowRoot) {
+        // We are in a shadow DOM, so get the host and add its selector to the path
+        path.unshift(getSelector(root.host));
+        current = root.host;
+      } else {
+        // We've reached the light DOM
+        break;
+      }
     }
     return path;
   }
@@ -100,8 +107,8 @@
 
   function saveAction(actionData) {
     chrome.runtime.sendMessage({ action: 'recordAction', data: actionData }, response => {
-      if (chrome.runtime.lastError) {
-        console.error(`Error saving action: ${chrome.runtime.lastError.message}`);
+      if (chrome.runtime.lastError || (response && !response.success)) {
+        console.error(`Error saving action: ${chrome.runtime.lastError?.message || response?.error}`);
       }
     });
   }
@@ -123,11 +130,27 @@
 
   function showFeedback(x, y, color = '#ff0000') {
     const indicator = document.createElement('div');
-    indicator.style.cssText = `position:fixed;top:${y-10}px;left:${x-10}px;width:20px;height:20px;border:3px solid ${color};border-radius:50%;pointer-events:none;z-index:999999;animation:pulse .5s ease-out;`;
+    indicator.style.cssText = `
+      position: fixed;
+      top: ${y - 10}px;
+      left: ${x - 10}px;
+      width: 20px;
+      height: 20px;
+      border: 3px solid ${color};
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 999999;
+      animation: pulse 0.5s ease-out;
+    `;
     if (!document.getElementById('recorder-style')) {
       const style = document.createElement('style');
       style.id = 'recorder-style';
-      style.textContent = `@keyframes pulse{0%{transform:scale(1);opacity:1}100%{transform:scale(2);opacity:0}}`;
+      style.textContent = `
+        @keyframes pulse {
+          0% { transform: scale(1); opacity: 1; }
+          100% { transform: scale(2); opacity: 0; }
+        }
+      `;
       document.head.appendChild(style);
     }
     document.body.appendChild(indicator);
