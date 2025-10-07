@@ -74,7 +74,7 @@
       selector: getSelector(element),
       shadowDOMPath: getShadowDOMPath(element),
       tagName: element.tagName,
-      className: element.className,
+      className: String(element.className),
       id: element.id || null,
       textContent: element.textContent ? element.textContent.trim().substring(0, 200) : null,
       value: element.value !== undefined ? element.value : null,
@@ -221,10 +221,22 @@
 
   function handlePaste(e) {
     if (!isRecording) return;
-    const pasteData = { type: 'paste', relativeTime: startTime ? Date.now() - startTime : 0, element: getElementInfo(e.target), pastedText: e.clipboardData?.getData('text') || null, url: window.location.href };
-    saveAction(pasteData);
+    const eventTime = startTime ? Date.now() - startTime : 0;
+    const pastedText = e.clipboardData?.getData('text') || null;
+
     if (e.target === lastInputElement) {
-      eventSequence.push({ type: 'paste', relativeTime: pasteData.relativeTime, pastedText: pasteData.pastedText });
+      // If paste happens on the focused input, only add it to the sequence.
+      eventSequence.push({ type: 'paste', relativeTime: eventTime, pastedText: pastedText });
+    } else {
+      // If paste happens elsewhere, save it as a standalone event.
+      const pasteData = {
+        type: 'paste',
+        relativeTime: eventTime,
+        element: getElementInfo(e.target),
+        pastedText: pastedText,
+        url: window.location.href
+      };
+      saveAction(pasteData);
     }
     const rect = e.target.getBoundingClientRect();
     showFeedback(rect.left + 10, rect.top + 10, '#0000ff');
