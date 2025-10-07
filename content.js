@@ -3,6 +3,11 @@ let startTime = null;
 
 // Initialize from storage and record page load if necessary
 chrome.storage.local.get(['isRecording', 'startTime'], (result) => {
+  if (chrome.runtime.lastError) {
+    console.error(`Error getting initial state: ${chrome.runtime.lastError.message}`);
+    return;
+  }
+
   isRecording = result.isRecording || false;
   startTime = result.startTime || null;
 
