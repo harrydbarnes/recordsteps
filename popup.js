@@ -27,33 +27,33 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 startBtn.addEventListener('click', () => {
+  // Optimistically update UI for responsiveness
   isRecording = true;
-  chrome.storage.local.set({ isRecording: true }, () => {
-    if (chrome.runtime.lastError) {
-      console.error('Error saving state:', chrome.runtime.lastError);
-    }
-  });
-  chrome.runtime.sendMessage({ action: 'startRecording' }, (response) => {
-    if (chrome.runtime.lastError) {
-      console.error('Error sending message:', chrome.runtime.lastError);
-    }
-  });
   updateUI();
+
+  chrome.runtime.sendMessage({ action: 'startRecording' }, (response) => {
+    // But revert the UI if the background script reports a failure
+    if (chrome.runtime.lastError || (response && !response.success)) {
+      console.error('Failed to start recording:', chrome.runtime.lastError?.message || response?.error);
+      isRecording = false; // Revert state
+      updateUI();
+    }
+  });
 });
 
 stopBtn.addEventListener('click', () => {
+  // Optimistically update UI
   isRecording = false;
-  chrome.storage.local.set({ isRecording: false }, () => {
-    if (chrome.runtime.lastError) {
-      console.error('Error saving state:', chrome.runtime.lastError);
-    }
-  });
-  chrome.runtime.sendMessage({ action: 'stopRecording' }, (response) => {
-    if (chrome.runtime.lastError) {
-      console.error('Error sending message:', chrome.runtime.lastError);
-    }
-  });
   updateUI();
+
+  chrome.runtime.sendMessage({ action: 'stopRecording' }, (response) => {
+    // Revert UI on failure
+    if (chrome.runtime.lastError || (response && !response.success)) {
+      console.error('Failed to stop recording:', chrome.runtime.lastError?.message || response?.error);
+      isRecording = true; // Revert state
+      updateUI();
+    }
+  });
 });
 
 downloadBtn.addEventListener('click', () => {

@@ -1,533 +1,286 @@
-let isRecording = false;
-let startTime = null;
-let eventSequence = [];
-let lastInputElement = null;
+(async () => {
+  // --- State Initialization ---
+  let isRecording = false;
+  let startTime = null;
+  let eventSequence = [];
+  let lastInputElement = null;
 
-// Initialize from storage
-chrome.storage.local.get(['isRecording'], (result) => {
-  isRecording = result.isRecording || false;
-  if (isRecording) {
-    startTime = Date.now();
+  try {
+    const result = await chrome.storage.local.get(['isRecording', 'startTime']);
+    isRecording = result.isRecording || false;
+    startTime = result.startTime || null;
+  } catch (e) {
+    console.error(`Error initializing content script state: ${e.message}`);
+    return;
   }
-});
 
-// Listen for messages from popup
-chrome.runtime.onMessage.addListener((message) => {
-  if (message.action === 'startRecording') {
-    isRecording = true;
-    startTime = Date.now();
-    eventSequence = [];
-  } else if (message.action === 'stopRecording') {
-    isRecording = false;
-    startTime = null;
-    eventSequence = [];
-    lastInputElement = null;
-  }
-});
+  // --- Utility Functions ---
 
-// Generate unique selector for element
-function getSelector(element) {
-  if (element.id) {
-    return `#${element.id}`;
-  }
-  
-  if (element.className) {
-    const classes = element.className.trim().split(/\s+/).join('.');
-    const selector = `${element.tagName.toLowerCase()}.${classes}`;
-    if (document.querySelectorAll(selector).length === 1) {
-      return selector;
-    }
-  }
-  
-  // Build path from parent
-  let path = [];
-  let current = element;
-  
-  while (current && current.nodeType === Node.ELEMENT_NODE) {
-    let selector = current.tagName.toLowerCase();
-    
-    if (current.id) {
-      selector += `#${current.id}`;
-      path.unshift(selector);
-      break;
-    } else {
-      let sibling = current;
-      let nth = 1;
-      while (sibling.previousElementSibling) {
-        sibling = sibling.previousElementSibling;
-        if (sibling.tagName === current.tagName) nth++;
+  function getSelector(element) {
+    if (element.id) {
+      const idSelector = `#${CSS.escape(element.id)}`;
+      try {
+        if (document.querySelectorAll(idSelector).length === 1) return idSelector;
+      } catch(e) {
+        console.warn('Invalid ID selector generated, falling back to path:', idSelector, e);
       }
-      if (nth > 1) selector += `:nth-of-type(${nth})`;
     }
-    
-    path.unshift(selector);
-    current = current.parentElement;
-  }
-  
-  return path.join(' > ');
-}
-
-// Get Shadow DOM path
-function getShadowDOMPath(element) {
-  const path = [];
-  let current = element;
-  
-  while (current) {
-    const info = {
-      tagName: current.tagName,
-      id: current.id || null,
-      className: current.className || null,
-      selector: getSelector(current),
-      hasShadowRoot: !!current.shadowRoot
-    };
-    
-    if (current.shadowRoot) {
-      info.shadowRootMode = current.shadowRoot.mode;
-      info.shadowRootHTML = current.shadowRoot.innerHTML;
+    if (element.className) {
+      const className = (typeof element.className === 'string') ? element.className : (element.className.baseVal || '');
+      const classes = className.trim().split(/\s+/).map(c => `.${CSS.escape(c)}`).join('');
+      if (classes) {
+        const selector = `${element.tagName.toLowerCase()}${classes}`;
+        try {
+          if (document.querySelectorAll(selector).length === 1) return selector;
+        } catch (e) {
+          console.warn('Invalid class selector generated, falling back to path:', selector, e);
+        }
+      }
     }
-    
-    path.push(info);
-    
-    // Check if parent is a shadow host
-    const root = current.getRootNode();
-    if (root instanceof ShadowRoot) {
-      current = root.host;
-    } else {
+    let path = [];
+    let current = element;
+    while (current && current.nodeType === Node.ELEMENT_NODE) {
+      let selector = current.tagName.toLowerCase();
+      if (current.id) {
+        selector += `#${CSS.escape(current.id)}`;
+        path.unshift(selector);
+        break;
+      } else {
+        let sibling = current, nth = 1;
+        while ((sibling = sibling.previousElementSibling)) {
+          if (sibling.tagName === current.tagName) nth++;
+        }
+        if (nth > 1) selector += `:nth-of-type(${nth})`;
+      }
+      path.unshift(selector);
       current = current.parentElement;
     }
+    return path.join(' > ');
   }
-  
-  return path;
-}
 
-// Get full Shadow DOM snapshot
-function getShadowDOMSnapshot(element) {
-  const snapshot = {
-    element: element.tagName,
-    id: element.id || null,
-    outerHTML: element.outerHTML.substring(0, 5000), // Limit size
-    shadowRoots: []
-  };
-  
-  // Traverse and collect all shadow roots
-  function traverseShadowDOM(node, depth = 0) {
-    if (depth > 10) return; // Prevent infinite recursion
-    
-    if (node.shadowRoot) {
-      const shadowInfo = {
-        host: node.tagName,
-        hostId: node.id || null,
-        mode: node.shadowRoot.mode,
-        innerHTML: node.shadowRoot.innerHTML,
-        childElements: []
-      };
-      
-      // Get all child elements in shadow root
-      const children = node.shadowRoot.querySelectorAll('*');
-      children.forEach(child => {
-        shadowInfo.childElements.push({
-          tagName: child.tagName,
-          id: child.id || null,
-          className: child.className || null,
-          attributes: Array.from(child.attributes).map(attr => ({
-            name: attr.name,
-            value: attr.value
-          }))
-        });
-        
-        // Recurse into nested shadow roots
-        if (child.shadowRoot) {
-          traverseShadowDOM(child, depth + 1);
-        }
-      });
-      
-      snapshot.shadowRoots.push(shadowInfo);
-    }
-    
-    // Check children for shadow roots
-    if (node.children) {
-      Array.from(node.children).forEach(child => traverseShadowDOM(child, depth));
-    }
-  }
-  
-  traverseShadowDOM(element);
-  return snapshot;
-}
-
-// Get comprehensive element information
-function getElementInfo(element) {
-  const info = {
-    tagName: element.tagName,
-    id: element.id || null,
-    className: element.className || null,
-    classList: element.classList ? Array.from(element.classList) : [],
-    selector: getSelector(element),
-    shadowDOMPath: getShadowDOMPath(element),
-    attributes: {},
-    text: element.textContent?.trim().substring(0, 200) || null,
-    innerText: element.innerText?.trim().substring(0, 200) || null,
-    value: element.value || null,
-    href: element.href || null,
-    src: element.src || null,
-    alt: element.alt || null,
-    title: element.title || null,
-    type: element.type || null,
-    name: element.name || null,
-    placeholder: element.placeholder || null,
-    role: element.getAttribute('role') || null,
-    ariaLabel: element.getAttribute('aria-label') || null,
-    ariaChecked: element.getAttribute('aria-checked') || null,
-    disabled: element.disabled || null,
-    dataAttributes: {}
-  };
-  
-  // Capture all standard attributes
-  if (element.attributes) {
-    for (let attr of element.attributes) {
-      info.attributes[attr.name] = attr.value;
-      
-      // Capture data-* attributes separately for easy access
-      if (attr.name.startsWith('data-')) {
-        info.dataAttributes[attr.name] = attr.value;
+  function getShadowDOMPath(element) {
+    const path = [];
+    let current = element;
+    // Ascend from the element's location
+    while (current && current.parentElement) {
+      const root = current.getRootNode();
+      if (root instanceof ShadowRoot) {
+        // We are in a shadow DOM, so get the host and add its selector to the path
+        path.unshift(getSelector(root.host));
+        current = root.host;
+      } else {
+        // We've reached the light DOM
+        break;
       }
     }
+    return path;
   }
-  
-  // Get computed styles that might be useful
-  const computedStyle = window.getComputedStyle(element);
-  info.styles = {
-    display: computedStyle.display,
-    visibility: computedStyle.visibility,
-    position: computedStyle.position,
-    zIndex: computedStyle.zIndex
-  };
-  
-  // Get element dimensions and position
-  const rect = element.getBoundingClientRect();
-  info.boundingBox = {
-    top: rect.top,
-    left: rect.left,
-    width: rect.width,
-    height: rect.height,
-    right: rect.right,
-    bottom: rect.bottom
-  };
-  
-  // Get parent information for context
-  if (element.parentElement) {
-    info.parent = {
-      tagName: element.parentElement.tagName,
-      id: element.parentElement.id || null,
-      className: element.parentElement.className || null,
-      selector: getSelector(element.parentElement)
-    };
-    
-    // Capture Shadow DOM snapshot of parent if it has shadowRoot
-    if (element.parentElement.shadowRoot) {
-      info.parentShadowDOMSnapshot = getShadowDOMSnapshot(element.parentElement);
-    }
-  }
-  
-  // For form elements, capture form context
-  if (element.form) {
-    info.form = {
-      id: element.form.id || null,
-      name: element.form.name || null,
-      action: element.form.action || null,
-      method: element.form.method || null
-    };
-  }
-  
-  // Check if element is inside a shadow root
-  const root = element.getRootNode();
-  if (root instanceof ShadowRoot) {
-    info.insideShadowDOM = {
-      hostTagName: root.host.tagName,
-      hostId: root.host.id || null,
-      hostSelector: getSelector(root.host),
-      shadowRootMode: root.mode
-    };
-  }
-  
-  return info;
-}
 
-// Save action to storage
-function saveAction(actionData) {
-  chrome.storage.local.get(['clicks'], (result) => {
-    const clicks = result.clicks || [];
-    clicks.push(actionData);
-    chrome.storage.local.set({ clicks });
-  });
-}
-
-// Show visual feedback
-function showFeedback(x, y, color = '#ff0000') {
-  const indicator = document.createElement('div');
-  indicator.style.cssText = `
-    position: fixed;
-    top: ${y - 10}px;
-    left: ${x - 10}px;
-    width: 20px;
-    height: 20px;
-    border: 3px solid ${color};
-    border-radius: 50%;
-    pointer-events: none;
-    z-index: 999999;
-    animation: pulse 0.5s ease-out;
-  `;
-  
-  if (!document.getElementById('recorder-style')) {
-    const style = document.createElement('style');
-    style.id = 'recorder-style';
-    style.textContent = `
-      @keyframes pulse {
-        0% { transform: scale(1); opacity: 1; }
-        100% { transform: scale(2); opacity: 0; }
+  function getElementInfo(element) {
+    if (!element) return null;
+    const computedStyle = window.getComputedStyle(element);
+    const boundingBox = element.getBoundingClientRect();
+    const info = {
+      selector: getSelector(element),
+      shadowDOMPath: getShadowDOMPath(element),
+      tagName: element.tagName,
+      className: (typeof element.className === 'string') ? element.className : (element.className.baseVal || ''),
+      id: element.id || null,
+      textContent: element.textContent ? element.textContent.trim().substring(0, 200) : null,
+      value: element.value !== undefined ? element.value : null,
+      href: element.href || null,
+      src: element.src || null,
+      alt: element.alt || null,
+      title: element.title || null,
+      role: element.getAttribute('role') || null,
+      ariaLabel: element.getAttribute('aria-label') || null,
+      dataAttributes: {},
+      style: {
+        display: computedStyle.display,
+        visibility: computedStyle.visibility,
+        width: boundingBox.width,
+        height: boundingBox.height,
+        top: boundingBox.top,
+        left: boundingBox.left,
+      },
+      parentElement: element.parentElement ? getSelector(element.parentElement) : null,
+    };
+    if (element.attributes) {
+      for (let attr of element.attributes) {
+        if (attr.name.startsWith('data-')) {
+          info.dataAttributes[attr.name] = attr.value;
+        }
       }
-    `;
-    document.head.appendChild(style);
+    }
+    return info;
   }
-  
-  document.body.appendChild(indicator);
-  
-  setTimeout(() => {
-    indicator.remove();
-  }, 500);
-}
 
-// Track all DOM events on input elements for detailed event sequencing
-const eventsToTrack = [
-  'focus', 'blur', 'input', 'change', 
-  'keydown', 'keypress', 'keyup',
-  'beforeinput', 'textInput',
-  'compositionstart', 'compositionupdate', 'compositionend'
-];
-
-function attachEventTrackers(element) {
-  if (element !== lastInputElement) {
-    lastInputElement = element;
-    eventSequence = [];
-    
-    eventsToTrack.forEach(eventType => {
-      element.addEventListener(eventType, (e) => {
-        if (!isRecording) return;
-        
-        const eventInfo = {
-          type: eventType,
-          timestamp: Date.now(),
-          relativeTime: startTime ? Date.now() - startTime : 0,
-          bubbles: e.bubbles,
-          cancelable: e.cancelable,
-          composed: e.composed,
-          defaultPrevented: e.defaultPrevented
-        };
-        
-        // Add event-specific data
-        if (e instanceof KeyboardEvent) {
-          eventInfo.key = e.key;
-          eventInfo.code = e.code;
-          eventInfo.keyCode = e.keyCode;
-          eventInfo.ctrlKey = e.ctrlKey;
-          eventInfo.shiftKey = e.shiftKey;
-          eventInfo.altKey = e.altKey;
-          eventInfo.metaKey = e.metaKey;
-        }
-        
-        if (e instanceof InputEvent) {
-          eventInfo.inputType = e.inputType;
-          eventInfo.data = e.data;
-          eventInfo.dataTransfer = e.dataTransfer ? 'present' : null;
-        }
-        
-        eventSequence.push(eventInfo);
-        
-        // Save event sequence snapshot periodically
-        if (eventSequence.length % 5 === 0) {
-          saveAction({
-            type: 'eventSequence',
-            timestamp: Date.now(),
-            relativeTime: startTime ? Date.now() - startTime : 0,
-            element: getElementInfo(element),
-            events: [...eventSequence],
-            currentValue: element.value,
-            url: window.location.href
-          });
-        }
-      }, true);
+  function saveAction(actionData) {
+    chrome.runtime.sendMessage({ action: 'recordAction', data: actionData }, response => {
+      if (chrome.runtime.lastError || (response && !response.success)) {
+        console.error(`Error saving action: ${chrome.runtime.lastError?.message || response?.error}`);
+      }
     });
   }
-}
 
-// Record click event
-document.addEventListener('click', (e) => {
-  if (!isRecording) return;
-  
-  const elementInfo = getElementInfo(e.target);
-  
-  // Capture Shadow DOM snapshot for parent if it exists
-  let parentSnapshot = null;
-  if (e.target.parentElement) {
-    parentSnapshot = getShadowDOMSnapshot(e.target.parentElement);
-  }
-  
-  const clickData = {
-    type: 'click',
-    timestamp: Date.now(),
-    relativeTime: startTime ? Date.now() - startTime : 0,
-    element: elementInfo,
-    parentShadowDOMSnapshot: parentSnapshot,
-    position: {
-      x: e.clientX,
-      y: e.clientY,
-      pageX: e.pageX,
-      pageY: e.pageY
-    },
-    url: window.location.href,
-    viewport: {
-      width: window.innerWidth,
-      height: window.innerHeight
+  function flushInputEvents() {
+    if (lastInputElement && eventSequence.length > 0) {
+      const sequenceData = {
+        type: 'inputSequence',
+        relativeTime: eventSequence[0].relativeTime,
+        element: getElementInfo(lastInputElement),
+        events: eventSequence,
+        finalValue: lastInputElement.value,
+        url: window.location.href,
+      };
+      saveAction(sequenceData);
     }
-  };
-  
-  saveAction(clickData);
-  showFeedback(e.clientX, e.clientY, '#ff0000');
-}, true);
-
-// Record focus events to detect when input fields appear
-document.addEventListener('focus', (e) => {
-  if (!isRecording) return;
-  
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-    // Attach detailed event trackers
-    attachEventTrackers(e.target);
-    
-    const elementInfo = getElementInfo(e.target);
-    
-    // Capture comprehensive Shadow DOM snapshot
-    let shadowDOMSnapshot = null;
-    const root = e.target.getRootNode();
-    if (root instanceof ShadowRoot) {
-      shadowDOMSnapshot = getShadowDOMSnapshot(root.host);
-    }
-    
-    const focusData = {
-      type: 'focus',
-      timestamp: Date.now(),
-      relativeTime: startTime ? Date.now() - startTime : 0,
-      element: elementInfo,
-      shadowDOMSnapshot: shadowDOMSnapshot,
-      fullContext: {
-        documentTitle: document.title,
-        activeElement: document.activeElement?.tagName,
-        url: window.location.href
-      }
-    };
-    
-    saveAction(focusData);
-    
-    const rect = e.target.getBoundingClientRect();
-    showFeedback(rect.left + 10, rect.top + 10, '#00ffff');
+    eventSequence = [];
   }
-}, true);
 
-// Record keyboard input (typing)
-document.addEventListener('input', (e) => {
-  if (!isRecording) return;
-  
-  const inputData = {
-    type: 'input',
-    timestamp: Date.now(),
-    relativeTime: startTime ? Date.now() - startTime : 0,
-    element: getElementInfo(e.target),
-    inputType: e.inputType,
-    data: e.data,
-    value: e.target.value,
-    eventSequence: [...eventSequence],
-    url: window.location.href
-  };
-  
-  saveAction(inputData);
-  
-  const rect = e.target.getBoundingClientRect();
-  showFeedback(rect.left + 10, rect.top + 10, '#00ff00');
-}, true);
+  function showFeedback(x, y, color = '#ff0000') {
+    const indicator = document.createElement('div');
+    indicator.style.cssText = `
+      position: fixed;
+      top: ${y - 10}px;
+      left: ${x - 10}px;
+      width: 20px;
+      height: 20px;
+      border: 3px solid ${color};
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 999999;
+      animation: pulse 0.5s ease-out;
+    `;
+    if (!document.getElementById('recorder-style')) {
+      const style = document.createElement('style');
+      style.id = 'recorder-style';
+      style.textContent = `
+        @keyframes pulse {
+          0% { transform: scale(1); opacity: 1; }
+          100% { transform: scale(2); opacity: 0; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    document.body.appendChild(indicator);
+    setTimeout(() => indicator.remove(), 500);
+  }
 
-// Record paste events
-document.addEventListener('paste', (e) => {
-  if (!isRecording) return;
-  
-  const pasteData = {
-    type: 'paste',
-    timestamp: Date.now(),
-    relativeTime: startTime ? Date.now() - startTime : 0,
-    element: getElementInfo(e.target),
-    pastedText: e.clipboardData?.getData('text') || null,
-    eventSequence: [...eventSequence],
-    url: window.location.href
-  };
-  
-  saveAction(pasteData);
-  
-  const rect = e.target.getBoundingClientRect();
-  showFeedback(rect.left + 10, rect.top + 10, '#0000ff');
-}, true);
+  // --- Event Listeners ---
 
-// Record keydown for special keys
-document.addEventListener('keydown', (e) => {
-  if (!isRecording) return;
-  
-  const specialKeys = ['Enter', 'Tab', 'Escape', 'Backspace', 'Delete', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
-  
-  if (specialKeys.includes(e.key)) {
-    const keyData = {
-      type: 'keypress',
-      timestamp: Date.now(),
+  function handleClick(e) {
+    if (!isRecording) return;
+    const clickData = {
+      type: 'click',
       relativeTime: startTime ? Date.now() - startTime : 0,
       element: getElementInfo(e.target),
-      key: e.key,
-      code: e.code,
-      ctrlKey: e.ctrlKey,
-      shiftKey: e.shiftKey,
-      altKey: e.altKey,
-      metaKey: e.metaKey,
-      eventSequence: [...eventSequence],
       url: window.location.href
     };
-    
-    saveAction(keyData);
-    
-    const rect = e.target.getBoundingClientRect();
-    showFeedback(rect.left + 10, rect.top + 10, '#ffff00');
+    saveAction(clickData);
+    showFeedback(e.clientX, e.clientY, '#ff0000');
   }
-}, true);
 
-// Monitor for attribute changes (like toggle switches or button states)
-const observer = new MutationObserver((mutations) => {
-  if (!isRecording) return;
-  
-  mutations.forEach((mutation) => {
-    if (mutation.type === 'attributes') {
-      const mutationData = {
-        type: 'attributeChange',
-        timestamp: Date.now(),
-        relativeTime: startTime ? Date.now() - startTime : 0,
-        element: getElementInfo(mutation.target),
-        attributeName: mutation.attributeName,
-        oldValue: mutation.oldValue,
-        newValue: mutation.target.getAttribute(mutation.attributeName),
+  function handleFocus(e) {
+    const target = e.target;
+    if (!isRecording || !(target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+    if (lastInputElement && lastInputElement !== target) {
+      flushInputEvents();
+    }
+    lastInputElement = target;
+    eventSequence = [];
+    const focusData = {
+      type: 'focus',
+      relativeTime: startTime ? Date.now() - startTime : 0,
+      element: getElementInfo(target),
+      url: window.location.href
+    };
+    saveAction(focusData);
+    const rect = target.getBoundingClientRect();
+    showFeedback(rect.left + 10, rect.top + 10, '#00ffff');
+  }
+
+  function handleBlur(e) {
+    if (!isRecording || e.target !== lastInputElement) return;
+    flushInputEvents();
+    lastInputElement = null;
+  }
+
+  function handleKeydown(e) {
+    if (!isRecording) return;
+    const eventTime = startTime ? Date.now() - startTime : 0;
+
+    if (e.target === lastInputElement) {
+      eventSequence.push({ type: 'keydown', relativeTime: eventTime, key: e.key, code: e.code });
+      return;
+    }
+
+    const specialKeys = ['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace', 'Delete'];
+    if (specialKeys.includes(e.key)) {
+      const keyData = { type: 'keyDown', relativeTime: eventTime, element: getElementInfo(e.target), key: e.key, code: e.code, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey, url: window.location.href };
+      saveAction(keyData);
+      const rect = e.target.getBoundingClientRect();
+      showFeedback(rect.left + 10, rect.top + 10, '#ffff00');
+    }
+  }
+
+  function handleInput(e) {
+    if (!isRecording || e.target !== lastInputElement) return;
+    eventSequence.push({ type: 'input', relativeTime: startTime ? Date.now() - startTime : 0, inputType: e.inputType, data: e.data, value: e.target.value });
+  }
+
+  function handlePaste(e) {
+    if (!isRecording) return;
+    const eventTime = startTime ? Date.now() - startTime : 0;
+    const pastedText = e.clipboardData?.getData('text') || null;
+
+    if (e.target === lastInputElement) {
+      // If paste happens on the focused input, only add it to the sequence.
+      eventSequence.push({ type: 'paste', relativeTime: eventTime, pastedText: pastedText });
+    } else {
+      // If paste happens elsewhere, save it as a standalone event.
+      const pasteData = {
+        type: 'paste',
+        relativeTime: eventTime,
+        element: getElementInfo(e.target),
+        pastedText: pastedText,
         url: window.location.href
       };
-      
-      saveAction(mutationData);
+      saveAction(pasteData);
+    }
+    const rect = e.target.getBoundingClientRect();
+    showFeedback(rect.left + 10, rect.top + 10, '#0000ff');
+  }
+
+  const observer = new MutationObserver((mutations) => {
+    if (!isRecording) return;
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'attributes') {
+        saveAction({ type: 'attributeChange', relativeTime: startTime ? Date.now() - startTime : 0, element: getElementInfo(mutation.target), attributeName: mutation.attributeName, oldValue: mutation.oldValue, newValue: mutation.target.getAttribute(mutation.attributeName), url: window.location.href });
+      }
+    });
+  });
+
+  // Attach all event listeners
+  document.addEventListener('click', handleClick, true);
+  document.addEventListener('focus', handleFocus, true);
+  document.addEventListener('blur', handleBlur, true);
+  document.addEventListener('input', handleInput, true);
+  document.addEventListener('keydown', handleKeydown, true);
+  document.addEventListener('paste', handlePaste, true);
+  observer.observe(document.body, { attributes: true, attributeOldValue: true, subtree: true, attributeFilter: ['class', 'disabled', 'aria-checked', 'data-state', 'aria-disabled'] });
+
+  // --- State Synchronization ---
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace === 'local') {
+      if (changes.isRecording) isRecording = !!changes.isRecording.newValue;
+      if (changes.startTime) startTime = changes.startTime.newValue || null;
     }
   });
-});
 
-// Start observing the document for attribute changes
-observer.observe(document.body, {
-  attributes: true,
-  attributeOldValue: true,
-  subtree: true,
-  attributeFilter: ['class', 'disabled', 'aria-checked', 'data-state', 'aria-disabled']
-});
+  // --- Initial Action ---
+  if (isRecording) {
+    saveAction({ type: 'pageLoad', relativeTime: startTime ? Date.now() - startTime : 0, url: window.location.href, title: document.title });
+  }
+
+})();
