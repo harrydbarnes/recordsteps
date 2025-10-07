@@ -40,24 +40,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: false, error: e.message });
       }
     } else if (message.action === 'recordAction') {
-      // Define the individual write operation
       const writeOperation = async () => {
         const { clicks } = await chrome.storage.local.get('clicks');
         const newClicks = [...(clicks || []), message.data];
         await chrome.storage.local.set({ clicks: newClicks });
       };
 
-      // Chain the operation and handle its specific outcome
-      recordActionLock = recordActionLock.then(() =>
-        writeOperation()
-          .then(() => {
-            sendResponse({ success: true });
-          })
-          .catch((e) => {
-            console.error(`Error recording action: ${e.message}`);
-            sendResponse({ success: false, error: e.message });
-          })
-      );
+      recordActionLock = recordActionLock.then(async () => {
+        try {
+          await writeOperation();
+          sendResponse({ success: true });
+        } catch (e) {
+          console.error(`Error recording action: ${e.message}`);
+          sendResponse({ success: false, error: e.message });
+        }
+      });
     }
   })();
 
