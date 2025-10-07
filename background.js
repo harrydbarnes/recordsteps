@@ -46,31 +46,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // --- New Section for Web Navigation Tracking ---
 
 // Listen for successful page loads (navigation completion)
-chrome.webNavigation.onCompleted.addListener((details) => {
-  // details.frameId === 0 ensures we only track the main frame (not iframes)
-  // details.url.startsWith('http') filters out chrome://, about:, etc.
-  if (details.frameId === 0 && details.url.startsWith('http')) {
-    // Check local storage to see if recording is currently active
-    chrome.storage.local.get('isRecording', (result) => {
-      if (chrome.runtime.lastError) {
-        console.error(`Error getting recording state: ${chrome.runtime.lastError.message}`);
-        return;
-      }
+chrome.webNavigation.onCompleted.addListener(async (details) => {
+  // Filter for main frame and http/https URLs
+  if (details.frameId !== 0 || !details.url.startsWith('http')) {
+    return;
+  }
 
-      if (result.isRecording) {
-        // Use an async IIFE to handle the injection
-        (async () => {
-          try {
-            await chrome.scripting.executeScript({
-              target: { tabId: details.tabId },
-              files: ['content.js'],
-            });
-          } catch (e) {
-            // This can happen if the script is already injected, which is fine.
-            console.log(`Could not inject script in tab ${details.tabId}: ${e.message}`);
-          }
-        })();
-      }
-    });
+  try {
+    const { isRecording } = await chrome.storage.local.get('isRecording');
+    if (isRecording) {
+      // Inject the content script if recording is active.
+      await chrome.scripting.executeScript({
+        target: { tabId: details.tabId },
+        files: ['content.js'],
+      });
+    }
+  } catch (e) {
+    // This can happen if the script is already injected or on pages where scripting is disallowed.
+    // It's not a critical error in our workflow, so we log it for debugging purposes.
+    console.log(`Could not inject script in tab ${details.tabId}: ${e.message}`);
   }
 });
