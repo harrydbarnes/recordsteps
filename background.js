@@ -15,25 +15,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     if (message.action === 'startRecording') {
       try {
-        // Set recording state and inject the content script.
-        await chrome.storage.local.set({ isRecording: true, startTime: Date.now(), clicks: [] });
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (tab) {
-          await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            files: ['content.js'],
-          });
+          // Attempt to inject the script first. This is the most likely point of failure.
+          try {
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              files: ['content.js'],
+            });
+          } catch (e) {
+            // If it's not an "already injected" error, we should fail the entire operation.
+            if (!e.message.includes('already injected')) {
+              throw e; // Re-throw to be caught by the outer catch block.
+            }
+            // Otherwise, it's safe to continue.
+            console.log('Content script was already injected.');
+          }
         }
+        // ONLY after we are sure the content script is ready, we perform the state change.
+        await chrome.storage.local.set({ isRecording: true, startTime: Date.now(), clicks: [] });
         sendResponse({ success: true });
       } catch (e) {
-        // The script may have already been injected. This is not a fatal error.
-        if (e.message.includes('already injected')) {
-          console.log('Content script was already injected.');
-          sendResponse({ success: true });
-        } else {
-          console.error(`Error starting recording: ${e.message}`);
-          sendResponse({ success: false, error: e.message });
-        }
+        console.error(`Error starting recording: ${e.message}`);
+        sendResponse({ success: false, error: e.message });
       }
     } else if (message.action === 'stopRecording') {
       try {
