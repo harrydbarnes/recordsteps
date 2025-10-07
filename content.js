@@ -17,15 +17,24 @@
   // --- Utility Functions ---
 
   function getSelector(element) {
-    if (element.id) return `#${element.id}`;
+    if (element.id) {
+      const idSelector = `#${CSS.escape(element.id)}`;
+      try {
+        if (document.querySelectorAll(idSelector).length === 1) return idSelector;
+      } catch(e) {
+        console.warn('Invalid ID selector generated, falling back to path:', idSelector, e);
+      }
+    }
     if (element.className) {
       const className = (typeof element.className === 'string') ? element.className : (element.className.baseVal || '');
-      const classes = className.trim().split(/\s+/).join('.');
+      const classes = className.trim().split(/\s+/).map(c => `.${CSS.escape(c)}`).join('');
       if (classes) {
-        const selector = `${element.tagName.toLowerCase()}.${classes}`;
+        const selector = `${element.tagName.toLowerCase()}${classes}`;
         try {
           if (document.querySelectorAll(selector).length === 1) return selector;
-        } catch (e) { /* Invalid selector */ }
+        } catch (e) {
+          console.warn('Invalid class selector generated, falling back to path:', selector, e);
+        }
       }
     }
     let path = [];

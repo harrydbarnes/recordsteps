@@ -42,9 +42,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     } else if (message.action === 'stopRecording') {
       try {
-        // Clear recording state.
-        await chrome.storage.local.set({ isRecording: false });
-        await chrome.storage.local.remove('startTime');
+        // Clear recording state in parallel for efficiency.
+        await Promise.all([
+          chrome.storage.local.set({ isRecording: false }),
+          chrome.storage.local.remove('startTime')
+        ]);
         sendResponse({ success: true });
       } catch (e) {
         console.error(`Error stopping recording: ${e.message}`);
