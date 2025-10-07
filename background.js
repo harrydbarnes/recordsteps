@@ -9,39 +9,33 @@ chrome.runtime.onInstalled.addListener(() => {
 // Handle messages from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'startRecording') {
-    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-      if (tabs[0]) {
-        try {
-          // Try to inject the content script if it's not already there
-          await chrome.scripting.executeScript({
-            target: { tabId: tabs[0].id },
-            files: ['content.js']
-          });
-        } catch (error) {
-          console.log('Content script already injected or injection failed:', error);
-        }
-        
-        // Send the start recording message
-        chrome.tabs.sendMessage(tabs[0].id, { action: 'startRecording' }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.log('Error sending message:', chrome.runtime.lastError);
+    // First, set the recording state.
+    chrome.storage.local.set({ isRecording: true, startTime: Date.now(), clicks: [] }, () => {
+      // After state is set, inject the content script into the active tab.
+      chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+        if (tabs[0]) {
+          try {
+            await chrome.scripting.executeScript({
+              target: { tabId: tabs[0].id },
+              files: ['content.js'],
+            });
+          } catch (e) {
+            console.log(`Could not inject script in tab ${tabs[0].id}: ${e.message}`);
           }
-        });
-      }
+        }
+        // Send the response after attempting injection.
+        sendResponse({ success: true });
+      });
     });
   } else if (message.action === 'stopRecording') {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: 'stopRecording' }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.log('Error sending message:', chrome.runtime.lastError);
-          }
-        });
-      }
+    chrome.storage.local.set({ isRecording: false }, () => {
+      chrome.storage.local.remove('startTime', () => {
+        sendResponse({ success: true });
+      });
     });
   }
-  
-  sendResponse({ success: true });
+
+  // Return true to indicate that the response will be sent asynchronously.
   return true;
 });
 
@@ -53,19 +47,20 @@ chrome.webNavigation.onCompleted.addListener((details) => {
   // details.url.startsWith('http') filters out chrome://, about:, etc.
   if (details.frameId === 0 && details.url.startsWith('http')) {
     // Check local storage to see if recording is currently active
-    chrome.storage.local.get('isRecording', (result) => {
+    chrome.storage.local.get('isRecording', async (result) => {
       if (result.isRecording) {
-        // Send a message to the content script in the loaded tab to record the load event
-        chrome.tabs.sendMessage(details.tabId, {
-          action: 'pageLoad',
-          url: details.url
-        }, (response) => {
-          if (chrome.runtime.lastError) {
-            // This is expected if content.js hasn't been injected yet for this specific tab,
-            // but the pageLoad action will be handled by content.js upon future injection.
-            console.log('Error sending pageLoad message:', chrome.runtime.lastError);
-          }
-        });
+        // Ensure the content script is injected before sending a message.
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: details.tabId },
+            files: ['content.js'],
+          });
+        } catch (e) {
+            // This can happen if the script is already injected, which is fine.
+            console.log(`Could not inject script in tab ${details.tabId}: ${e.message}`);
+        }
+
+        // The content script will handle recording the page load event upon injection.
       }
     });
   }

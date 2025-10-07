@@ -28,32 +28,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
 startBtn.addEventListener('click', () => {
   isRecording = true;
-  chrome.storage.local.set({ isRecording: true }, () => {
-    if (chrome.runtime.lastError) {
-      console.error('Error saving state:', chrome.runtime.lastError);
-    }
-  });
+  updateUI();
   chrome.runtime.sendMessage({ action: 'startRecording' }, (response) => {
     if (chrome.runtime.lastError) {
       console.error('Error sending message:', chrome.runtime.lastError);
     }
   });
-  updateUI();
 });
 
 stopBtn.addEventListener('click', () => {
   isRecording = false;
-  chrome.storage.local.set({ isRecording: false }, () => {
-    if (chrome.runtime.lastError) {
-      console.error('Error saving state:', chrome.runtime.lastError);
-    }
-  });
+  updateUI();
   chrome.runtime.sendMessage({ action: 'stopRecording' }, (response) => {
     if (chrome.runtime.lastError) {
       console.error('Error sending message:', chrome.runtime.lastError);
     }
   });
-  updateUI();
 });
 
 downloadBtn.addEventListener('click', () => {

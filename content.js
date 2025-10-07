@@ -1,32 +1,20 @@
 let isRecording = false;
 let startTime = null;
 
-// Initialize from storage
-chrome.storage.local.get(['isRecording'], (result) => {
+// Initialize from storage and record page load if necessary
+chrome.storage.local.get(['isRecording', 'startTime'], (result) => {
   isRecording = result.isRecording || false;
+  startTime = result.startTime || null;
+
+  // If we are recording, this script injection is the result of a navigation.
+  // Therefore, we should record the page load event.
   if (isRecording) {
-    startTime = Date.now();
-  }
-});
-
-// Listen for messages from popup and background
-chrome.runtime.onMessage.addListener((message) => {
-  if (message.action === 'startRecording') {
-    isRecording = true;
-    startTime = Date.now();
-  } else if (message.action === 'stopRecording') {
-    isRecording = false;
-    startTime = null;
-  } else if (message.action === 'pageLoad') {
-    if (!isRecording) return;
-
     const loadData = {
       type: 'pageLoad',
       relativeTime: startTime ? Date.now() - startTime : 0,
-      url: message.url,
+      url: window.location.href,
       title: document.title,
     };
-
     saveAction(loadData);
   }
 });
