@@ -6,14 +6,7 @@
   let lastInputElement = null;
 
   try {
-    const result = await new Promise((resolve, reject) => {
-      chrome.storage.local.get(['isRecording', 'startTime'], (data) => {
-        if (chrome.runtime.lastError) {
-          return reject(chrome.runtime.lastError);
-        }
-        resolve(data);
-      });
-    });
+    const result = await chrome.storage.local.get(['isRecording', 'startTime']);
     isRecording = result.isRecording || false;
     startTime = result.startTime || null;
   } catch (e) {
