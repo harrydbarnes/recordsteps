@@ -6,6 +6,9 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
+// Promise lock to serialize recordAction operations
+let recordActionLock = Promise.resolve();
+
 // Handle messages from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Use an IIFE to handle async logic and respond to the message.
@@ -37,11 +40,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: false, error: e.message });
       }
     } else if (message.action === 'recordAction') {
-      try {
-        // Get the current clicks, add the new one, and save it back.
+      // Chain the new operation onto the existing lock
+      const newLock = recordActionLock.then(async () => {
         const { clicks } = await chrome.storage.local.get('clicks');
         const newClicks = [...(clicks || []), message.data];
         await chrome.storage.local.set({ clicks: newClicks });
+      });
+
+      // Update the lock to the new promise
+      recordActionLock = newLock;
+
+      try {
+        await newLock; // Wait for the chained promise to complete
         sendResponse({ success: true });
       } catch (e) {
         console.error(`Error recording action: ${e.message}`);
