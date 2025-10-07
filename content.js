@@ -42,7 +42,7 @@
     while (current && current.nodeType === Node.ELEMENT_NODE) {
       let selector = current.tagName.toLowerCase();
       if (current.id) {
-        selector += `#${current.id}`;
+        selector += `#${CSS.escape(current.id)}`;
         path.unshift(selector);
         break;
       } else {
