@@ -252,6 +252,15 @@
     showFeedback(rect.left + 10, rect.top + 10, '#0000ff');
   }
 
+  const observer = new MutationObserver((mutations) => {
+    if (!isRecording) return;
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'attributes') {
+        saveAction({ type: 'attributeChange', relativeTime: startTime ? Date.now() - startTime : 0, element: getElementInfo(mutation.target), attributeName: mutation.attributeName, oldValue: mutation.oldValue, newValue: mutation.target.getAttribute(mutation.attributeName), url: window.location.href });
+      }
+    });
+  });
+
   // Attach all event listeners
   document.addEventListener('click', handleClick, true);
   document.addEventListener('focus', handleFocus, true);
@@ -259,6 +268,7 @@
   document.addEventListener('input', handleInput, true);
   document.addEventListener('keydown', handleKeydown, true);
   document.addEventListener('paste', handlePaste, true);
+  observer.observe(document.body, { attributes: true, attributeOldValue: true, subtree: true, attributeFilter: ['class', 'disabled', 'aria-checked', 'data-state', 'aria-disabled'] });
 
   // --- State Synchronization ---
   chrome.storage.onChanged.addListener((changes, namespace) => {

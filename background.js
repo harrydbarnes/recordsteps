@@ -17,19 +17,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (tab) {
-          // Attempt to inject the script first. This is the most likely point of failure.
-          try {
-            await chrome.scripting.executeScript({
-              target: { tabId: tab.id, allFrames: true },
-              files: ['content.js'],
-            });
-          } catch (e) {
-            // If it's not an "already injected" error, we should fail the entire operation.
-            if (!e.message.includes('already injected')) {
-              throw e; // Re-throw to be caught by the outer catch block.
+          // Inject the content script into all frames individually for robustness.
+          const frames = await chrome.webNavigation.getAllFrames({ tabId: tab.id });
+          for (const frame of frames) {
+            // Skip frames where script injection is likely to fail or not useful.
+            if (frame.url.startsWith('about:') || frame.url.startsWith('chrome:')) {
+              continue;
             }
-            // Otherwise, it's safe to continue.
-            console.log('Content script was already injected.');
+            try {
+              await chrome.scripting.executeScript({
+                target: { tabId: tab.id, frameIds: [frame.frameId] },
+                files: ['content.js'],
+              });
+            } catch (e) {
+              // Log errors for frames that couldn't be injected, but don't stop the process.
+              // The "already injected" message is not an error, so we can ignore it.
+              if (!e.message.includes('already injected')) {
+                console.warn(`Could not inject script in frame ${frame.frameId} (${frame.url}): ${e.message}`);
+              }
+            }
           }
         }
         // ONLY after we are sure the content script is ready, we perform the state change.
