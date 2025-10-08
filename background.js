@@ -109,6 +109,6 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
   } catch (e) {
     // This will primarily catch errors from the storage API.
     // It's not a critical error in our workflow, so we log it for debugging purposes.
-    console.log(`Error during webNavigation.onCompleted for tab ${details.tabId}: ${e.message}`);
+    console.error(`Error during webNavigation.onCompleted for tab ${details.tabId}: ${e.message}`);
   }
 });
