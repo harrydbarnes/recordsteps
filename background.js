@@ -1,4 +1,14 @@
-// Initialize storage
+/**
+ * @fileoverview The background script (service worker) for the Record Steps extension.
+ * It manages the extension's state, handles script injection, and processes data
+ * sent from the content script and popup.
+ */
+
+/**
+ * Initializes the extension's storage when it's installed or updated.
+ * Sets the default recording state and an empty array for clicks.
+ * @listens chrome.runtime.onInstalled
+ */
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.set({
     isRecording: false,
@@ -6,13 +16,34 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// Promise lock to serialize recordAction operations
+/**
+ * A Promise-based lock to ensure that 'recordAction' messages are processed serially.
+ * This prevents race conditions where multiple actions might try to update the
+ * 'clicks' array in storage simultaneously, which could lead to data loss.
+ * @type {Promise<void>}
+ */
 let recordActionLock = Promise.resolve();
 
-// Handle messages from popup
+/**
+ * Handles incoming messages from other parts of the extension, like the popup or content scripts.
+ * It routes messages to the appropriate logic based on the `message.action`.
+ * @listens chrome.runtime.onMessage
+ * @param {object} message The message sent by the calling script.
+ * @param {string} message.action The type of action to perform.
+ * @param {*} [message.data] Any data associated with the action.
+ * @param {chrome.runtime.MessageSender} sender Information about the script that sent the message.
+ * @param {function(object): void} sendResponse Function to call to send a response.
+ * @returns {boolean} Returns `true` to indicate that `sendResponse` will be called asynchronously.
+ */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // Use an IIFE to handle async logic and respond to the message.
+  /**
+   * @description An Immediately Invoked Function Expression (IIFE) to handle
+   * asynchronous message processing. This allows the use of `async/await`
+   * syntax within the synchronous listener.
+   */
   (async () => {
+    // Handles the 'startRecording' action. Injects the content script into the
+    // active tab, sets the recording state, and stores the start time.
     if (message.action === 'startRecording') {
       try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -46,6 +77,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         console.error(`Error starting recording: ${e.message}`);
         sendResponse({ success: false, error: e.message });
       }
+    // Handles the 'stopRecording' action. Resets the recording state and removes the start time.
     } else if (message.action === 'stopRecording') {
       try {
         // Clear recording state in parallel for efficiency.
@@ -58,6 +90,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         console.error(`Error stopping recording: ${e.message}`);
         sendResponse({ success: false, error: e.message });
       }
+    // Handles the 'recordAction' action. Appends a new action's data to the 'clicks'
+    // array in storage. Uses a lock to prevent race conditions.
     } else if (message.action === 'recordAction') {
       const writeOperation = async () => {
         const { clicks } = await chrome.storage.local.get('clicks');
@@ -65,6 +99,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await chrome.storage.local.set({ clicks: newClicks });
       };
 
+      // Chain the new write operation onto the lock.
       recordActionLock = recordActionLock.then(async () => {
         try {
           await writeOperation();
@@ -81,9 +116,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-// --- New Section for Web Navigation Tracking ---
-
-// Listen for successful page loads (navigation completion)
+/**
+ * Listens for navigation events, specifically when a page or frame has finished loading.
+ * If recording is active, it injects the content script into the newly loaded frame.
+ * This ensures that recording continues seamlessly across page navigations.
+ * @listens chrome.webNavigation.onCompleted
+ * @param {object} details Information about the navigation event.
+ * @param {number} details.tabId The ID of the tab where the navigation occurred.
+ * @param {number} details.frameId The ID of the frame that has completed loading.
+ * @param {string} details.url The URL of the loaded frame.
+ */
 chrome.webNavigation.onCompleted.addListener(async (details) => {
   // Filter for http/https URLs only, but allow all frames.
   if (!details.url.startsWith('http')) {
