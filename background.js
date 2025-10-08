@@ -21,7 +21,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const frames = await chrome.webNavigation.getAllFrames({ tabId: tab.id });
           for (const frame of frames) {
             // Skip frames where script injection is likely to fail or not useful.
-            if (!frame.url || frame.url.startsWith('about:') || frame.url.startsWith('chrome:')) {
+            if (!frame.url || !frame.url.startsWith('http')) {
               continue;
             }
             try {
