@@ -28,7 +28,7 @@ To set up the extension for local development, follow these steps:
 
 1.  **Clone the repository:**
     ```bash
-    git clone <repository-url>
+    git clone <URL-of-this-repository>
     ```
 2.  **Load the extension in Chrome:**
     - Open Google Chrome and navigate to `chrome://extensions`.
