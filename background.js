@@ -20,7 +20,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           // Attempt to inject the script first. This is the most likely point of failure.
           try {
             await chrome.scripting.executeScript({
-              target: { tabId: tab.id },
+              target: { tabId: tab.id, allFrames: true },
               files: ['content.js'],
             });
           } catch (e) {
@@ -79,17 +79,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Listen for successful page loads (navigation completion)
 chrome.webNavigation.onCompleted.addListener(async (details) => {
-  // Filter for main frame and http/https URLs
-  if (details.frameId !== 0 || !details.url.startsWith('http')) {
+  // Filter for http/https URLs only, but allow all frames.
+  if (!details.url.startsWith('http')) {
     return;
   }
 
   try {
     const { isRecording } = await chrome.storage.local.get('isRecording');
     if (isRecording) {
-      // Inject the content script if recording is active.
+      // Inject the content script if recording is active, targeting the specific frame that loaded.
       await chrome.scripting.executeScript({
-        target: { tabId: details.tabId },
+        target: { tabId: details.tabId, frameIds: [details.frameId] },
         files: ['content.js'],
       });
     }

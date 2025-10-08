@@ -1,4 +1,10 @@
 (async () => {
+  // --- Frame Identification Log ---
+  console.log(
+    `[RECORDER] Content script injected into: ${window.location.href}`,
+    window.self === window.top ? '(Main Frame)' : '(iFrame)'
+  );
+
   // --- State Initialization ---
   let isRecording = false;
   let startTime = null;
