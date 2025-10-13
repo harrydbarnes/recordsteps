@@ -1,0 +1,61 @@
+/* General body styling for the popup */
+body {
+  width: 340px;
+  padding: 0;
+  margin: 0;
+  /* Using Material 3 theme colors for background */
+  background-color: var(--md-sys-color-surface-container-low);
+}
+/* Main container for layout and theming */
+.main-container {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+/* Header styles */
+h2 {
+  margin: 0;
+  /* Using Material 3 typography */
+  font: var(--md-sys-typescale-headline-small);
+  color: var(--md-sys-color-on-surface);
+}
+/* Status indicator styling */
+.status-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+}
+.status-container.idle {
+  background-color: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+.status-container.recording {
+  background-color: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+}
+.status-container .icon {
+  font-size: 24px;
+}
+.status-container .text {
+  font: var(--md-sys-typescale-body-large);
+  margin: 0;
+}
+/* Button container for layout */
+.button-row {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+/* Ensure buttons fill the available space */
+md-filled-button, md-outlined-button, md-text-button {
+  flex-grow: 1;
+}
+/* Click count styling */
+#clickCount {
+  text-align: center;
+  font: var(--md-sys-typescale-body-medium);
+  color: var(--md-sys-color-on-surface-variant);
+}

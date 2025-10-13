@@ -131,9 +131,13 @@
     const info = {
       selector: getSelector(element),
       shadowDOMPath: getShadowDOMPath(element),
+      tagName: element.tagName,
+      textContent: element.textContent ? element.textContent.trim().substring(0, 200) : null,
       id: element.id || null,
       value: getMaskedValue(element),
       title: element.title || null,
+      role: element.getAttribute('role') || null,
+      ariaLabel: element.getAttribute('aria-label') || null,
     };
 
     return info;
