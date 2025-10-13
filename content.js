@@ -113,17 +113,26 @@
    * @param {HTMLElement} element The element to inspect.
    * @returns {object | null} An object containing detailed information about the element, or null if the element is invalid.
    */
+  /**
+   * Returns a masked value for an element if it is a password field,
+   * otherwise returns the actual value.
+   * @param {HTMLElement} element The element to get the value from.
+   * @returns {string | undefined} The masked or actual value.
+   */
+  function getMaskedValue(element) {
+    if (!element) return undefined;
+    const isPassword = element.type === 'password';
+    return isPassword ? '********' : element.value;
+  }
+
   function getElementInfo(element) {
     if (!element) return null;
-
-    const isPassword = element.type === 'password';
-    const value = isPassword ? '********' : element.value;
 
     const info = {
       selector: getSelector(element),
       shadowDOMPath: getShadowDOMPath(element),
       id: element.id || null,
-      value: value !== undefined ? value : null,
+      value: getMaskedValue(element),
       title: element.title || null,
     };
 
@@ -148,15 +157,12 @@
    */
   function flushInputEvents() {
     if (lastInputElement && eventSequence.length > 0) {
-      const isPassword = lastInputElement.type === 'password';
-      const finalValue = isPassword ? '********' : lastInputElement.value;
-
       const sequenceData = {
         type: 'inputSequence',
         relativeTime: eventSequence[0].relativeTime,
         element: getElementInfo(lastInputElement),
         events: eventSequence,
-        finalValue: finalValue,
+        finalValue: getMaskedValue(lastInputElement),
         url: window.location.href,
       };
       saveAction(sequenceData);
