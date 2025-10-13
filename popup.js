@@ -110,7 +110,7 @@ downloadBtn.addEventListener('click', () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const safeDate = new Date().toISOString().replace(/:/g, '-');
+    const safeDate = data.recordedAt.replace(/:/g, '-');
     a.download = `recording-${safeDate}.json`;
     a.click();
     URL.revokeObjectURL(url);
