@@ -4,16 +4,21 @@
   "version": "1.0",
   "description": "Records clicks, keyboard actions and timing for aiding automation",
   "permissions": [
-    "activeTab",
     "scripting",
     "storage",
+    "tabs",
     "webNavigation"
+  ],
+  "host_permissions": [
+    "<all_urls>"
   ],
   "action": {
     "default_popup": "popup.html"
   },
-
   "background": {
     "service_worker": "background.js"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; script-src-elem 'self' 'unsafe-inline' https://cdn.jsdelivr.net;"
   }
 }

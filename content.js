@@ -115,40 +115,18 @@
    */
   function getElementInfo(element) {
     if (!element) return null;
-    const computedStyle = window.getComputedStyle(element);
-    const boundingBox = element.getBoundingClientRect();
+
+    const isPassword = element.type === 'password';
+    const value = isPassword ? '********' : element.value;
+
     const info = {
       selector: getSelector(element),
       shadowDOMPath: getShadowDOMPath(element),
-      tagName: element.tagName,
-      className: (typeof element.className === 'string') ? element.className : (element.className.baseVal || ''),
       id: element.id || null,
-      textContent: element.textContent ? element.textContent.trim().substring(0, 200) : null,
-      value: element.value !== undefined ? element.value : null,
-      href: element.href || null,
-      src: element.src || null,
-      alt: element.alt || null,
+      value: value !== undefined ? value : null,
       title: element.title || null,
-      role: element.getAttribute('role') || null,
-      ariaLabel: element.getAttribute('aria-label') || null,
-      dataAttributes: {},
-      style: {
-        display: computedStyle.display,
-        visibility: computedStyle.visibility,
-        width: boundingBox.width,
-        height: boundingBox.height,
-        top: boundingBox.top,
-        left: boundingBox.left,
-      },
-      parentElement: element.parentElement ? getSelector(element.parentElement) : null,
     };
-    if (element.attributes) {
-      for (let attr of element.attributes) {
-        if (attr.name.startsWith('data-')) {
-          info.dataAttributes[attr.name] = attr.value;
-        }
-      }
-    }
+
     return info;
   }
 
@@ -170,12 +148,15 @@
    */
   function flushInputEvents() {
     if (lastInputElement && eventSequence.length > 0) {
+      const isPassword = lastInputElement.type === 'password';
+      const finalValue = isPassword ? '********' : lastInputElement.value;
+
       const sequenceData = {
         type: 'inputSequence',
         relativeTime: eventSequence[0].relativeTime,
         element: getElementInfo(lastInputElement),
         events: eventSequence,
-        finalValue: lastInputElement.value,
+        finalValue: finalValue,
         url: window.location.href,
       };
       saveAction(sequenceData);

@@ -1,8 +1,8 @@
 /**
  * @fileoverview Script for the popup UI of the Record Steps extension.
- * It handles user interactions with the popup, such as starting/stopping
- * recording, downloading data, and clearing the recording. It also
- * keeps the UI in sync with the extension's state stored in chrome.storage.
+ * It handles user interactions with the popup using Material Web Components,
+ * such as starting/stopping recording, downloading data, and clearing the recording.
+ * It also keeps the UI in sync with the extension's state stored in chrome.storage.
  */
 
 /**
@@ -11,12 +11,14 @@
  */
 let isRecording = false;
 
-// DOM element references
+// DOM element references for Material Web Components
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const downloadBtn = document.getElementById('downloadBtn');
 const clearBtn = document.getElementById('clearBtn');
-const status = document.getElementById('status');
+const statusContainer = document.getElementById('status');
+const statusIcon = statusContainer.querySelector('.icon');
+const statusText = statusContainer.querySelector('.text');
 const clickCount = document.getElementById('clickCount');
 
 /**
@@ -51,12 +53,9 @@ document.addEventListener('DOMContentLoaded', () => {
  * @listens click
  */
 startBtn.addEventListener('click', () => {
-  // Optimistically update UI for responsiveness
   isRecording = true;
   updateUI();
-
   chrome.runtime.sendMessage({ action: 'startRecording' }, (response) => {
-    // But revert the UI if the background script reports a failure
     if (chrome.runtime.lastError || (response && !response.success)) {
       console.error('Failed to start recording:', chrome.runtime.lastError?.message || response?.error);
       isRecording = false; // Revert state
@@ -72,12 +71,9 @@ startBtn.addEventListener('click', () => {
  * @listens click
  */
 stopBtn.addEventListener('click', () => {
-  // Optimistically update UI
   isRecording = false;
   updateUI();
-
   chrome.runtime.sendMessage({ action: 'stopRecording' }, (response) => {
-    // Revert UI on failure
     if (chrome.runtime.lastError || (response && !response.success)) {
       console.error('Failed to stop recording:', chrome.runtime.lastError?.message || response?.error);
       isRecording = true; // Revert state
@@ -99,25 +95,22 @@ downloadBtn.addEventListener('click', () => {
       alert('Error loading recorded data');
       return;
     }
-    
     const clicks = result.clicks || [];
     if (clicks.length === 0) {
       alert('No actions recorded yet!');
       return;
     }
-    
     const data = {
       recording: clicks,
       totalActions: clicks.length,
-      duration: clicks.length > 0 ? clicks[clicks.length - 1].timestamp - clicks[0].timestamp : 0,
+      duration: clicks.length > 0 ? (clicks[clicks.length - 1].relativeTime - clicks[0].relativeTime) : 0,
       recordedAt: new Date().toISOString()
     };
-    
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `click-recording-${Date.now()}.json`;
+    a.download = `recording-${new Date().toISOString()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   });
@@ -129,7 +122,7 @@ downloadBtn.addEventListener('click', () => {
  * @listens click
  */
 clearBtn.addEventListener('click', () => {
-  if (confirm('Clear all recorded actions?')) {
+  if (confirm('Are you sure you want to clear all recorded actions?')) {
     chrome.storage.local.set({ clicks: [] }, () => {
       if (chrome.runtime.lastError) {
         console.error('Error clearing data:', chrome.runtime.lastError);
@@ -141,18 +134,20 @@ clearBtn.addEventListener('click', () => {
 });
 
 /**
- * Updates the popup's UI elements based on the current recording state.
- * This includes enabling/disabling buttons and changing the status text.
+ * Updates the popup's UI elements based on the current recording state,
+ * following Material 3 design principles.
  */
 function updateUI() {
   if (isRecording) {
-    status.textContent = 'Recording...';
-    status.className = 'recording';
+    statusContainer.className = 'status-container recording';
+    statusIcon.textContent = 'pause_circle';
+    statusText.textContent = 'Recording...';
     startBtn.disabled = true;
     stopBtn.disabled = false;
   } else {
-    status.textContent = 'Ready to Record';
-    status.className = 'idle';
+    statusContainer.className = 'status-container idle';
+    statusIcon.textContent = 'radio_button_checked';
+    statusText.textContent = 'Ready to Record';
     startBtn.disabled = false;
     stopBtn.disabled = true;
   }
@@ -163,28 +158,22 @@ function updateUI() {
  * @param {Array<object>} clicks The array of recorded click/action objects.
  */
 function updateClickCount(clicks) {
-  clickCount.textContent = `Actions recorded: ${clicks.length}`;
+  clickCount.textContent = `Actions recorded: ${clicks ? clicks.length : 0}`;
 }
 
 /**
- * Adds a listener for changes in chrome.storage. This ensures the popup's UI
+ * Listens for changes in chrome.storage. This ensures the popup's UI
  * stays synchronized with the authoritative state managed by the background script.
- * For example, if recording is stopped from another context, the UI will update accordingly.
  * @listens chrome.storage.onChanged
- * @param {object} changes - An object where keys are the names of items that changed.
- * @param {string} namespace - The name of the storage area ('local' or 'sync') that changed.
  */
 if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace !== 'local') return;
-    
-    // If the 'clicks' array changes, update the displayed count.
     if (changes.clicks) {
       updateClickCount(changes.clicks.newValue || []);
     }
-    // If the 'isRecording' flag changes, update the entire UI.
     if (changes.isRecording) {
-      isRecording = changes.isRecording.newValue;
+      isRecording = !!changes.isRecording.newValue;
       updateUI();
     }
   });
