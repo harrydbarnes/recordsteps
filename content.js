@@ -114,18 +114,22 @@
    * @returns {object | null} An object containing detailed information about the element, or null if the element is invalid.
    */
   /**
-   * Returns a masked value for an element if it is a password field,
-   * otherwise returns the actual value.
+   * Returns a masked value for an element if it is a sensitive field,
+   * otherwise returns the actual value. It ensures that undefined values
+   * are returned as null for data consistency.
    * @param {HTMLElement} element The element to get the value from.
-   * @returns {string | undefined} The masked or actual value.
+   * @returns {string | null} The masked or actual value.
    */
   function getMaskedValue(element) {
-    if (!element) return undefined;
+    if (!element) return null;
     const sensitiveKeywords = /password|secret|token|key|creditcard|cvc/i;
     const isSensitive = element.type === 'password' ||
       (element.name && sensitiveKeywords.test(element.name)) ||
       (element.id && sensitiveKeywords.test(element.id));
-    return isSensitive ? '********' : element.value;
+    if (isSensitive) {
+      return '********';
+    }
+    return element.value !== undefined ? element.value : null;
   }
 
   function getElementInfo(element) {
