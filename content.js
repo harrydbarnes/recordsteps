@@ -122,7 +122,7 @@
    */
   function isElementSensitive(element) {
     if (!element) return false;
-    const sensitiveKeywords = /password|secret|token|key|creditcard|cvc|ssn|socialsecuritynumber|card[_-]number|account[_-]number|api-key|jwt/i;
+    const sensitiveKeywords = /password|secret|token|key|credit[ _-]?card|cvc|ssn|social[ _-]?security[ _-]?number|card[ _-]number|account[ _-]number|api[ _-]?key|jwt/i;
     const ariaLabel = element.getAttribute('aria-label');
     return element.type === 'password' ||
       (element.name && sensitiveKeywords.test(element.name)) ||
