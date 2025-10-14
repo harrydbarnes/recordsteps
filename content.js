@@ -123,11 +123,12 @@
   function isElementSensitive(element) {
     if (!element) return false;
     const sensitiveKeywords = /password|secret|token|key|creditcard|cvc|ssn|socialsecuritynumber|card[_-]number|account[_-]number|api-key|jwt/i;
+    const ariaLabel = element.getAttribute('aria-label');
     return element.type === 'password' ||
       (element.name && sensitiveKeywords.test(element.name)) ||
       (element.id && sensitiveKeywords.test(element.id)) ||
       (element.placeholder && sensitiveKeywords.test(element.placeholder)) ||
-      (element.getAttribute('aria-label') && sensitiveKeywords.test(element.getAttribute('aria-label')));
+      (ariaLabel && sensitiveKeywords.test(ariaLabel));
   }
 
   function getMaskedValue(element) {
@@ -327,11 +328,14 @@
    */
   function handleInput(e) {
     if (!isRecording || e.target !== lastInputElement) return;
-    if (isElementSensitive(e.target)) {
-      eventSequence.push({ type: 'input', relativeTime: startTime ? Date.now() - startTime : 0, inputType: e.inputType, data: null, value: '********' });
-    } else {
-      eventSequence.push({ type: 'input', relativeTime: startTime ? Date.now() - startTime : 0, inputType: e.inputType, data: e.data, value: e.target.value });
-    }
+    const isSensitive = isElementSensitive(e.target);
+    eventSequence.push({
+      type: 'input',
+      relativeTime: startTime ? Date.now() - startTime : 0,
+      inputType: e.inputType,
+      data: isSensitive ? null : e.data,
+      value: isSensitive ? '********' : e.target.value
+    });
   }
 
   /**
