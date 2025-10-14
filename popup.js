@@ -20,6 +20,7 @@ const statusContainer = document.getElementById('status');
 const statusIcon = statusContainer.querySelector('.icon');
 const statusText = statusContainer.querySelector('.text');
 const clickCount = document.getElementById('clickCount');
+const confirmDialog = document.getElementById('confirmDialog');
 
 /**
  * Adds a listener for the DOMContentLoaded event to initialize the popup's state and UI.
@@ -121,8 +122,7 @@ downloadBtn.addEventListener('click', () => {
  * @listens click
  */
 clearBtn.addEventListener('click', () => {
-  const dialog = document.getElementById('confirmDialog');
-  dialog.show();
+  confirmDialog.show();
 });
 
 /**
@@ -130,7 +130,7 @@ clearBtn.addEventListener('click', () => {
  * it clears the recorded actions from storage.
  * @listens close
  */
-document.getElementById('confirmDialog').addEventListener('close', function (e) {
+confirmDialog.addEventListener('close', function (e) {
   if (e.target.returnValue === 'clear') {
     chrome.storage.local.set({ clicks: [] }, () => {
       if (chrome.runtime.lastError) {

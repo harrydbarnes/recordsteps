@@ -120,13 +120,18 @@
    * @param {HTMLElement} element The element to get the value from.
    * @returns {string | null} The masked or actual value.
    */
-  function getMaskedValue(element) {
-    if (!element) return null;
-    const sensitiveKeywords = /password|secret|token|key|creditcard|cvc/i;
-    const isSensitive = element.type === 'password' ||
+  const sensitiveKeywords = /password|secret|token|key|creditcard|cvc|ssn|socialsecuritynumber|card_number|account_number/i;
+
+  function isElementSensitive(element) {
+    if (!element) return false;
+    return element.type === 'password' ||
       (element.name && sensitiveKeywords.test(element.name)) ||
       (element.id && sensitiveKeywords.test(element.id));
-    if (isSensitive) {
+  }
+
+  function getMaskedValue(element) {
+    if (!element) return null;
+    if (isElementSensitive(element)) {
       return '********';
     }
     return element.value !== undefined ? element.value : null;
@@ -321,7 +326,10 @@
    */
   function handleInput(e) {
     if (!isRecording || e.target !== lastInputElement) return;
-    eventSequence.push({ type: 'input', relativeTime: startTime ? Date.now() - startTime : 0, inputType: e.inputType, data: e.data, value: e.target.value });
+    const isSensitive = isElementSensitive(e.target);
+    const value = isSensitive ? '********' : e.target.value;
+    const data = isSensitive ? null : e.data;
+    eventSequence.push({ type: 'input', relativeTime: startTime ? Date.now() - startTime : 0, inputType: e.inputType, data: data, value: value });
   }
 
   /**
