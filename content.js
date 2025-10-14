@@ -123,12 +123,15 @@
   const sensitiveKeywords = /password|secret|token|key|credit[ _-]?card|cvc|ssn|social[ _-]?security[ _-]?number|card[ _-]number|account[ _-]?number|api[ _-]?key|jwt/i;
   function isElementSensitive(element) {
     if (!element) return false;
-    const ariaLabel = element.getAttribute('aria-label');
-    return element.type === 'password' ||
-      (element.name && sensitiveKeywords.test(element.name)) ||
-      (element.id && sensitiveKeywords.test(element.id)) ||
-      (element.placeholder && sensitiveKeywords.test(element.placeholder)) ||
-      (ariaLabel && sensitiveKeywords.test(ariaLabel));
+
+    const attributesToTest = [
+      element.name,
+      element.id,
+      element.placeholder,
+      element.getAttribute('aria-label'),
+    ];
+
+    return element.type === 'password' || attributesToTest.some(attr => attr && sensitiveKeywords.test(attr));
   }
 
   function getMaskedValue(element) {

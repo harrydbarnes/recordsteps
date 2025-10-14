@@ -46,99 +46,84 @@ document.addEventListener('DOMContentLoaded', () => {
     updateUI();
     updateClickCount([]);
   }
-});
 
-/**
- * Handles the click event for the "Start Recording" button.
- * It optimistically updates the UI and sends a message to the background
- * script to begin the recording process.
- * @listens click
- */
-startBtn.addEventListener('click', () => {
-  isRecording = true;
-  updateUI();
-  chrome.runtime.sendMessage({ action: 'startRecording' }, (response) => {
-    if (chrome.runtime.lastError || (response && !response.success)) {
-      console.error('Failed to start recording:', chrome.runtime.lastError?.message || response?.error);
-      isRecording = false; // Revert state
+  // Add event listeners after the DOM is fully loaded
+  if (startBtn) {
+    startBtn.addEventListener('click', () => {
+      isRecording = true;
       updateUI();
-    }
-  });
-});
+      chrome.runtime.sendMessage({ action: 'startRecording' }, (response) => {
+        if (chrome.runtime.lastError || (response && !response.success)) {
+          console.error('Failed to start recording:', chrome.runtime.lastError?.message || response?.error);
+          isRecording = false; // Revert state
+          updateUI();
+        }
+      });
+    });
+  }
 
-/**
- * Handles the click event for the "Stop Recording" button.
- * It optimistically updates the UI and sends a message to the background
- * script to end the recording process.
- * @listens click
- */
-stopBtn.addEventListener('click', () => {
-  isRecording = false;
-  updateUI();
-  chrome.runtime.sendMessage({ action: 'stopRecording' }, (response) => {
-    if (chrome.runtime.lastError || (response && !response.success)) {
-      console.error('Failed to stop recording:', chrome.runtime.lastError?.message || response?.error);
-      isRecording = true; // Revert state
+  if (stopBtn) {
+    stopBtn.addEventListener('click', () => {
+      isRecording = false;
       updateUI();
-    }
-  });
-});
+      chrome.runtime.sendMessage({ action: 'stopRecording' }, (response) => {
+        if (chrome.runtime.lastError || (response && !response.success)) {
+          console.error('Failed to stop recording:', chrome.runtime.lastError?.message || response?.error);
+          isRecording = true; // Revert state
+          updateUI();
+        }
+      });
+    });
+  }
 
-/**
- * Handles the click event for the "Download Recording" button.
- * It retrieves the recorded actions from storage, formats them into a
- * JSON object, and triggers a download.
- * @listens click
- */
-downloadBtn.addEventListener('click', () => {
-  chrome.storage.local.get(['clicks'], (result) => {
-    if (chrome.runtime.lastError) {
-      console.error('Error loading clicks:', chrome.runtime.lastError);
-      showErrorStatus('Could not load recording.');
-      return;
-    }
-    const clicks = result.clicks || [];
-    if (clicks.length === 0) {
-      return;
-    }
-    const data = {
-      recording: clicks,
-      totalActions: clicks.length,
-      duration: clicks.length > 0 ? (clicks[clicks.length - 1].relativeTime - clicks[0].relativeTime) : 0,
-      recordedAt: new Date().toISOString()
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const safeDate = data.recordedAt.replace(/:/g, '-');
-    a.download = `recording-${safeDate}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  });
-});
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', () => {
+      chrome.storage.local.get(['clicks'], (result) => {
+        if (chrome.runtime.lastError) {
+          console.error('Error loading clicks:', chrome.runtime.lastError);
+          showErrorStatus('Could not load recording.');
+          return;
+        }
+        const clicks = result.clicks || [];
+        if (clicks.length === 0) {
+          return;
+        }
+        const data = {
+          recording: clicks,
+          totalActions: clicks.length,
+          duration: clicks.length > 0 ? (clicks[clicks.length - 1].relativeTime - clicks[0].relativeTime) : 0,
+          recordedAt: new Date().toISOString()
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const safeDate = data.recordedAt.replace(/:/g, '-');
+        a.download = `recording-${safeDate}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    });
+  }
 
-/**
- * Handles the click event for the "Clear Recording" button.
- * It shows the confirmation dialog.
- * @listens click
- */
-clearBtn.addEventListener('click', () => {
-  confirmDialog.show();
-});
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (confirmDialog) {
+        confirmDialog.show();
+      }
+    });
+  }
 
-/**
- * Handles the close event of the confirmation dialog. If the user confirmed,
- * it clears the recorded actions from storage.
- * @listens close
- */
-confirmDialog.addEventListener('close', function (e) {
-  if (e.target.returnValue === 'clear') {
-    chrome.storage.local.set({ clicks: [] }, () => {
-      if (chrome.runtime.lastError) {
-        console.error('Error clearing data:', chrome.runtime.lastError);
-      } else {
-        updateClickCount([]);
+  if (confirmDialog) {
+    confirmDialog.addEventListener('close', function (e) {
+      if (e.target.returnValue === 'clear') {
+        chrome.storage.local.set({ clicks: [] }, () => {
+          if (chrome.runtime.lastError) {
+            console.error('Error clearing data:', chrome.runtime.lastError);
+          } else {
+            updateClickCount([]);
+          }
+        });
       }
     });
   }
