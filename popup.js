@@ -95,6 +95,9 @@ downloadBtn.addEventListener('click', () => {
       return;
     }
     const clicks = result.clicks || [];
+    if (clicks.length === 0) {
+      return;
+    }
     const data = {
       recording: clicks,
       totalActions: clicks.length,
