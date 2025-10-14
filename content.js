@@ -121,8 +121,11 @@
    */
   function getMaskedValue(element) {
     if (!element) return undefined;
-    const isPassword = element.type === 'password';
-    return isPassword ? '********' : element.value;
+    const sensitiveKeywords = /password|secret|token|key|creditcard|cvc/i;
+    const isSensitive = element.type === 'password' ||
+      (element.name && sensitiveKeywords.test(element.name)) ||
+      (element.id && sensitiveKeywords.test(element.id));
+    return isSensitive ? '********' : element.value;
   }
 
   function getElementInfo(element) {

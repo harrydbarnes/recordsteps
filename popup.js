@@ -92,14 +92,9 @@ downloadBtn.addEventListener('click', () => {
   chrome.storage.local.get(['clicks'], (result) => {
     if (chrome.runtime.lastError) {
       console.error('Error loading clicks:', chrome.runtime.lastError);
-      alert('Error loading recorded data');
       return;
     }
     const clicks = result.clicks || [];
-    if (clicks.length === 0) {
-      alert('No actions recorded yet!');
-      return;
-    }
     const data = {
       recording: clicks,
       totalActions: clicks.length,
@@ -119,11 +114,21 @@ downloadBtn.addEventListener('click', () => {
 
 /**
  * Handles the click event for the "Clear Recording" button.
- * It prompts the user for confirmation before clearing all recorded actions from storage.
+ * It shows the confirmation dialog.
  * @listens click
  */
 clearBtn.addEventListener('click', () => {
-  if (confirm('Are you sure you want to clear all recorded actions?')) {
+  const dialog = document.getElementById('confirmDialog');
+  dialog.show();
+});
+
+/**
+ * Handles the close event of the confirmation dialog. If the user confirmed,
+ * it clears the recorded actions from storage.
+ * @listens close
+ */
+document.getElementById('confirmDialog').addEventListener('close', function (e) {
+  if (e.target.returnValue === 'clear') {
     chrome.storage.local.set({ clicks: [] }, () => {
       if (chrome.runtime.lastError) {
         console.error('Error clearing data:', chrome.runtime.lastError);
@@ -159,7 +164,11 @@ function updateUI() {
  * @param {Array<object>} clicks The array of recorded click/action objects.
  */
 function updateClickCount(clicks) {
-  clickCount.textContent = `Actions recorded: ${clicks ? clicks.length : 0}`;
+  const count = clicks ? clicks.length : 0;
+  clickCount.textContent = `Actions recorded: ${count}`;
+  const hasActions = count > 0;
+  downloadBtn.disabled = !hasActions;
+  clearBtn.disabled = !hasActions;
 }
 
 /**

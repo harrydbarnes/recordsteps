@@ -9,7 +9,7 @@
   <!-- Local Stylesheet -->
   <link rel="stylesheet" href="popup.css" />
   <!-- Material Web Components (MWC) -->
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@material/web/all.js?module"></script>
+  <script type="module" src="material.js"></script>
 </head>
 <body>
 
@@ -44,5 +44,17 @@
 
   <!-- Popup script -->
   <script src="popup.js"></script>
+
+  <!-- Confirmation Dialog -->
+  <md-dialog id="confirmDialog">
+    <div slot="headline">Clear Recording</div>
+    <div slot="content">
+      Are you sure you want to delete all recorded actions? This cannot be undone.
+    </div>
+    <div slot="actions">
+      <md-text-button value="cancel">Cancel</md-text-button>
+      <md-text-button value="clear">Clear</md-text-button>
+    </div>
+  </md-dialog>
 </body>
 </html>
