@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.storage.local.get(['isRecording', 'clicks'], (result) => {
       if (chrome.runtime.lastError) {
         console.error('Error loading state:', chrome.runtime.lastError);
+        showErrorStatus('Could not load state.');
         return;
       }
       isRecording = result.isRecording || false;
@@ -93,6 +94,7 @@ downloadBtn.addEventListener('click', () => {
   chrome.storage.local.get(['clicks'], (result) => {
     if (chrome.runtime.lastError) {
       console.error('Error loading clicks:', chrome.runtime.lastError);
+      showErrorStatus('Could not load recording.');
       return;
     }
     const clicks = result.clicks || [];
@@ -146,6 +148,12 @@ confirmDialog.addEventListener('close', function (e) {
  * Updates the popup's UI elements based on the current recording state,
  * following Material 3 design principles.
  */
+function showErrorStatus(message) {
+  statusContainer.className = 'status-container error';
+  statusIcon.textContent = 'error';
+  statusText.textContent = message;
+}
+
 function updateUI() {
   if (isRecording) {
     statusContainer.className = 'status-container recording';
