@@ -120,13 +120,15 @@
    * @param {HTMLElement} element The element to get the value from.
    * @returns {string | null} The masked or actual value.
    */
-  const sensitiveKeywords = /password|secret|token|key|creditcard|cvc|ssn|socialsecuritynumber|card_number|account_number/i;
+  const sensitiveKeywords = /password|secret|token|key|creditcard|cvc|ssn|socialsecuritynumber|card[_-]number|account[_-]number/i;
 
   function isElementSensitive(element) {
     if (!element) return false;
     return element.type === 'password' ||
       (element.name && sensitiveKeywords.test(element.name)) ||
-      (element.id && sensitiveKeywords.test(element.id));
+      (element.id && sensitiveKeywords.test(element.id)) ||
+      (element.placeholder && sensitiveKeywords.test(element.placeholder)) ||
+      (element.getAttribute('aria-label') && sensitiveKeywords.test(element.getAttribute('aria-label')));
   }
 
   function getMaskedValue(element) {
