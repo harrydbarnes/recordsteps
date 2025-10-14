@@ -152,6 +152,10 @@ function showErrorStatus(message) {
   statusContainer.className = 'status-container error';
   statusIcon.textContent = 'error';
   statusText.textContent = message;
+  startBtn.disabled = true;
+  stopBtn.disabled = true;
+  downloadBtn.disabled = true;
+  clearBtn.disabled = true;
 }
 
 function updateUI() {
