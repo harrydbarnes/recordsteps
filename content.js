@@ -144,7 +144,7 @@
       element.id,
       element.placeholder,
       element.getAttribute('aria-label'),
-      (typeof element.className === 'string') ? element.className : '',
+      (typeof element.className === 'string') ? element.className : (element.className.baseVal || ''),
       labelText,
     ];
 
