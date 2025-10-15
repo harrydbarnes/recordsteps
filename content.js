@@ -125,12 +125,27 @@
   function isElementSensitive(element) {
     if (!element) return false;
 
+    let labelText = '';
+    if (element.id) {
+      // Check for a <label> that is explicitly associated with this element.
+      const label = document.querySelector(`label[for="${CSS.escape(element.id)}"]`);
+      if (label) {
+        labelText = label.textContent || '';
+      }
+    }
+
+    // Also check for a parent <label> which is another common pattern.
+    if (!labelText && element.closest('label')) {
+      labelText = element.closest('label').textContent || '';
+    }
+
     const attributesToTest = [
       element.name,
       element.id,
       element.placeholder,
       element.getAttribute('aria-label'),
       (typeof element.className === 'string') ? element.className : '',
+      labelText,
     ];
 
     return element.type === 'password' || attributesToTest.some(attr => attr && sensitiveKeywords.test(attr));
@@ -352,15 +367,15 @@
   function handlePaste(e) {
     if (!isRecording) return;
     const eventTime = startTime ? Date.now() - startTime : 0;
-    const isTargetSensitive = isElementSensitive(e.target);
-    const pastedText = isTargetSensitive ? '********' : (e.clipboardData?.getData('text') || null);
 
     if (e.target === lastInputElement) {
-      // If paste happens on the focused input, only add it to the sequence.
-      // We can use the cached isLastInputSensitive value here for consistency.
-      eventSequence.push({ type: 'paste', relativeTime: eventTime, pastedText: isLastInputSensitive ? '********' : pastedText });
+      // If paste happens on the focused input, add it to the sequence using the cached sensitivity.
+      const pastedText = isLastInputSensitive ? '********' : (e.clipboardData?.getData('text') || null);
+      eventSequence.push({ type: 'paste', relativeTime: eventTime, pastedText: pastedText });
     } else {
-      // If paste happens elsewhere, save it as a standalone event.
+      // If paste happens elsewhere, check sensitivity and save it as a standalone event.
+      const isTargetSensitive = isElementSensitive(e.target);
+      const pastedText = isTargetSensitive ? '********' : (e.clipboardData?.getData('text') || null);
       const pasteData = {
         type: 'paste',
         relativeTime: eventTime,
