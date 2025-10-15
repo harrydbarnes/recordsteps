@@ -130,6 +130,7 @@
       element.id,
       element.placeholder,
       element.getAttribute('aria-label'),
+      (typeof element.className === 'string') ? element.className : '',
     ];
 
     return element.type === 'password' || attributesToTest.some(attr => attr && sensitiveKeywords.test(attr));
