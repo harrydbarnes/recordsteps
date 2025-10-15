@@ -5,22 +5,9 @@
  * It also keeps the UI in sync with the extension's state stored in chrome.storage.
  */
 
-/**
- * The current recording state, mirrored from chrome.storage for immediate UI updates.
- * @type {boolean}
- */
+// --- State ---
 let isRecording = false;
-
-// DOM element references for Material Web Components
-const startBtn = document.getElementById('startBtn');
-const stopBtn = document.getElementById('stopBtn');
-const downloadBtn = document.getElementById('downloadBtn');
-const clearBtn = document.getElementById('clearBtn');
-const statusContainer = document.getElementById('status');
-const statusIcon = statusContainer.querySelector('.icon');
-const statusText = statusContainer.querySelector('.text');
-const clickCount = document.getElementById('clickCount');
-const confirmDialog = document.getElementById('confirmDialog');
+let startBtn, stopBtn, downloadBtn, clearBtn, statusContainer, statusIcon, statusText, clickCount, confirmDialog;
 
 /**
  * Adds a listener for the DOMContentLoaded event to initialize the popup's state and UI.
@@ -29,6 +16,18 @@ const confirmDialog = document.getElementById('confirmDialog');
  * @listens DOMContentLoaded
  */
 document.addEventListener('DOMContentLoaded', () => {
+  // --- Element Initialization ---
+  startBtn = document.getElementById('startBtn');
+  stopBtn = document.getElementById('stopBtn');
+  downloadBtn = document.getElementById('downloadBtn');
+  clearBtn = document.getElementById('clearBtn');
+  statusContainer = document.getElementById('status');
+  statusIcon = statusContainer ? statusContainer.querySelector('.icon') : null;
+  statusText = statusContainer ? statusContainer.querySelector('.text') : null;
+  clickCount = document.getElementById('clickCount');
+  confirmDialog = document.getElementById('confirmDialog');
+
+  // --- Initial State and UI Setup ---
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
     chrome.storage.local.get(['isRecording', 'clicks'], (result) => {
       if (chrome.runtime.lastError) {
@@ -42,140 +41,133 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   } else {
     console.error('Chrome storage API not available');
-    // Set a default state if the API is unavailable (e.g., in a test environment)
     updateUI();
     updateClickCount([]);
   }
 
-  // Add event listeners after the DOM is fully loaded
+  // --- Event Listeners ---
   if (startBtn) {
-    startBtn.addEventListener('click', () => {
-      isRecording = true;
-      updateUI();
-      chrome.runtime.sendMessage({ action: 'startRecording' }, (response) => {
-        if (chrome.runtime.lastError || (response && !response.success)) {
-          console.error('Failed to start recording:', chrome.runtime.lastError?.message || response?.error);
-          isRecording = false; // Revert state
-          updateUI();
-        }
-      });
-    });
+    startBtn.addEventListener('click', handleStartRecording);
   }
-
   if (stopBtn) {
-    stopBtn.addEventListener('click', () => {
-      isRecording = false;
-      updateUI();
-      chrome.runtime.sendMessage({ action: 'stopRecording' }, (response) => {
-        if (chrome.runtime.lastError || (response && !response.success)) {
-          console.error('Failed to stop recording:', chrome.runtime.lastError?.message || response?.error);
-          isRecording = true; // Revert state
-          updateUI();
-        }
-      });
-    });
+    stopBtn.addEventListener('click', handleStopRecording);
   }
-
   if (downloadBtn) {
-    downloadBtn.addEventListener('click', () => {
-      chrome.storage.local.get(['clicks'], (result) => {
-        if (chrome.runtime.lastError) {
-          console.error('Error loading clicks:', chrome.runtime.lastError);
-          showErrorStatus('Could not load recording.');
-          return;
-        }
-        const clicks = result.clicks || [];
-        if (clicks.length === 0) {
-          return;
-        }
-        const data = {
-          recording: clicks,
-          totalActions: clicks.length,
-          duration: clicks.length > 0 ? (clicks[clicks.length - 1].relativeTime - clicks[0].relativeTime) : 0,
-          recordedAt: new Date().toISOString()
-        };
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        const safeDate = data.recordedAt.replace(/:/g, '-');
-        a.download = `recording-${safeDate}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-      });
-    });
+    downloadBtn.addEventListener('click', handleDownload);
   }
-
   if (clearBtn) {
-    clearBtn.addEventListener('click', () => {
-      if (confirmDialog) {
-        confirmDialog.show();
-      }
-    });
+    clearBtn.addEventListener('click', () => confirmDialog && confirmDialog.show());
   }
-
   if (confirmDialog) {
-    confirmDialog.addEventListener('close', function (e) {
-      if (e.target.returnValue === 'clear') {
-        chrome.storage.local.set({ clicks: [] }, () => {
-          if (chrome.runtime.lastError) {
-            console.error('Error clearing data:', chrome.runtime.lastError);
-          } else {
-            updateClickCount([]);
-          }
-        });
-      }
-    });
+    confirmDialog.addEventListener('close', handleDialogClose);
   }
 });
 
-/**
- * Updates the popup's UI elements based on the current recording state,
- * following Material 3 design principles.
- */
-function showErrorStatus(message) {
-  statusContainer.className = 'status-container error';
-  statusIcon.textContent = 'error';
-  statusText.textContent = message;
-  startBtn.disabled = true;
-  stopBtn.disabled = true;
-  downloadBtn.disabled = true;
-  clearBtn.disabled = true;
+// --- Event Handlers ---
+
+function handleStartRecording() {
+  isRecording = true;
+  updateUI();
+  chrome.runtime.sendMessage({ action: 'startRecording' }, (response) => {
+    if (chrome.runtime.lastError || (response && !response.success)) {
+      console.error('Failed to start recording:', chrome.runtime.lastError?.message || response?.error);
+      isRecording = false; // Revert state
+      updateUI();
+    }
+  });
 }
 
-function updateUI() {
-  if (isRecording) {
-    statusContainer.className = 'status-container recording';
-    statusIcon.textContent = 'pause_circle';
-    statusText.textContent = 'Recording...';
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-  } else {
-    statusContainer.className = 'status-container idle';
-    statusIcon.textContent = 'radio_button_checked';
-    statusText.textContent = 'Ready to Record';
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
+function handleStopRecording() {
+  isRecording = false;
+  updateUI();
+  chrome.runtime.sendMessage({ action: 'stopRecording' }, (response) => {
+    if (chrome.runtime.lastError || (response && !response.success)) {
+      console.error('Failed to stop recording:', chrome.runtime.lastError?.message || response?.error);
+      isRecording = true; // Revert state
+      updateUI();
+    }
+  });
+}
+
+function handleDownload() {
+  chrome.storage.local.get(['clicks'], (result) => {
+    if (chrome.runtime.lastError) {
+      console.error('Error loading clicks:', chrome.runtime.lastError);
+      showErrorStatus('Could not load recording.');
+      return;
+    }
+    const clicks = result.clicks || [];
+    if (clicks.length === 0) return;
+
+    const data = {
+      recording: clicks,
+      totalActions: clicks.length,
+      duration: clicks.length > 0 ? (clicks[clicks.length - 1].relativeTime - clicks[0].relativeTime) : 0,
+      recordedAt: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeDate = data.recordedAt.replace(/:/g, '-');
+    a.download = `recording-${safeDate}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
+function handleDialogClose(e) {
+  if (e.target.returnValue === 'clear') {
+    chrome.storage.local.set({ clicks: [] }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('Error clearing data:', chrome.runtime.lastError);
+      } else {
+        updateClickCount([]);
+      }
+    });
   }
 }
 
-/**
- * Updates the displayed count of recorded actions.
- * @param {Array<object>} clicks The array of recorded click/action objects.
- */
+// --- UI Update Functions ---
+
+function showErrorStatus(message) {
+  if (!statusContainer) return;
+  statusContainer.className = 'status-container error';
+  if (statusIcon) statusIcon.textContent = 'error';
+  if (statusText) statusText.textContent = message;
+  if (startBtn) startBtn.disabled = true;
+  if (stopBtn) stopBtn.disabled = true;
+  if (downloadBtn) downloadBtn.disabled = true;
+  if (clearBtn) clearBtn.disabled = true;
+}
+
+function updateUI() {
+  if (!statusContainer) return;
+  if (isRecording) {
+    statusContainer.className = 'status-container recording';
+    if (statusIcon) statusIcon.textContent = 'pause_circle';
+    if (statusText) statusText.textContent = 'Recording...';
+    if (startBtn) startBtn.disabled = true;
+    if (stopBtn) stopBtn.disabled = false;
+  } else {
+    statusContainer.className = 'status-container idle';
+    if (statusIcon) statusIcon.textContent = 'radio_button_checked';
+    if (statusText) statusText.textContent = 'Ready to Record';
+    if (startBtn) startBtn.disabled = false;
+    if (stopBtn) stopBtn.disabled = true;
+  }
+}
+
 function updateClickCount(clicks) {
+  if (!clickCount) return;
   const count = clicks ? clicks.length : 0;
   clickCount.textContent = `Actions recorded: ${count}`;
   const hasActions = count > 0;
-  downloadBtn.disabled = !hasActions;
-  clearBtn.disabled = !hasActions;
+  if (downloadBtn) downloadBtn.disabled = !hasActions;
+  if (clearBtn) clearBtn.disabled = !hasActions;
 }
 
-/**
- * Listens for changes in chrome.storage. This ensures the popup's UI
- * stays synchronized with the authoritative state managed by the background script.
- * @listens chrome.storage.onChanged
- */
+// --- Storage Change Listener ---
 if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace !== 'local') return;
