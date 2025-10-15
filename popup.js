@@ -151,7 +151,7 @@ function updateUI() {
     if (stopBtn) stopBtn.disabled = false;
   } else {
     statusContainer.className = 'status-container idle';
-    if (statusIcon) statusIcon.textContent = 'radio_button_checked';
+    if (statusIcon) statusIcon.textContent = 'radio_button_unchecked';
     if (statusText) statusText.textContent = 'Ready to Record';
     if (startBtn) startBtn.disabled = false;
     if (stopBtn) stopBtn.disabled = true;

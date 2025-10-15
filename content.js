@@ -18,6 +18,7 @@
   let startTime = null;
   let eventSequence = [];
   let lastInputElement = null;
+  let isLastInputSensitive = false;
 
   /**
    * Initializes the script's state by fetching the current recording status
@@ -277,6 +278,7 @@
       flushInputEvents();
     }
     lastInputElement = target;
+    isLastInputSensitive = isElementSensitive(target); // Cache sensitivity
     eventSequence = [];
     const focusData = {
       type: 'focus',
@@ -331,13 +333,12 @@
    */
   function handleInput(e) {
     if (!isRecording || e.target !== lastInputElement) return;
-    const isSensitive = isElementSensitive(e.target);
     eventSequence.push({
       type: 'input',
       relativeTime: startTime ? Date.now() - startTime : 0,
       inputType: e.inputType,
-      data: isSensitive ? null : e.data,
-      value: isSensitive ? '********' : e.target.value
+      data: isLastInputSensitive ? null : e.data,
+      value: isLastInputSensitive ? '********' : e.target.value
     });
   }
 
@@ -350,11 +351,13 @@
   function handlePaste(e) {
     if (!isRecording) return;
     const eventTime = startTime ? Date.now() - startTime : 0;
-    const pastedText = e.clipboardData?.getData('text') || null;
+    const isTargetSensitive = isElementSensitive(e.target);
+    const pastedText = isTargetSensitive ? '********' : (e.clipboardData?.getData('text') || null);
 
     if (e.target === lastInputElement) {
       // If paste happens on the focused input, only add it to the sequence.
-      eventSequence.push({ type: 'paste', relativeTime: eventTime, pastedText: pastedText });
+      // We can use the cached isLastInputSensitive value here for consistency.
+      eventSequence.push({ type: 'paste', relativeTime: eventTime, pastedText: isLastInputSensitive ? '********' : pastedText });
     } else {
       // If paste happens elsewhere, save it as a standalone event.
       const pasteData = {
