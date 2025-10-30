@@ -112,10 +112,21 @@ downloadBtn.addEventListener('click', () => {
       return;
     }
     
+    const flattenedClicks = clicks.flatMap(action => {
+      if (action.type === 'batchAttributeChange') {
+        return action.changes.map(change => ({
+          type: 'attributeChange',
+          relativeTime: action.relativeTime,
+          ...change
+        }));
+      }
+      return action;
+    });
+
     const data = {
-      recording: clicks,
-      totalActions: clicks.length,
-      duration: clicks.length > 0 ? clicks[clicks.length - 1].timestamp - clicks[0].timestamp : 0,
+      recording: flattenedClicks,
+      totalActions: flattenedClicks.length,
+      duration: flattenedClicks.length > 0 ? flattenedClicks[flattenedClicks.length - 1].relativeTime : 0,
       recordedAt: new Date().toISOString()
     };
     
@@ -169,7 +180,13 @@ function updateUI() {
  * @param {Array<object>} clicks The array of recorded click/action objects.
  */
 function updateClickCount(clicks) {
-  clickCount.textContent = `Actions recorded: ${clicks.length}`;
+  const count = clicks.reduce((acc, action) => {
+    if (action.type === 'batchAttributeChange') {
+      return acc + action.changes.length;
+    }
+    return acc + 1;
+  }, 0);
+  clickCount.textContent = `Actions recorded: ${count}`;
 }
 
 /**

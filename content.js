@@ -338,7 +338,8 @@
     showFeedback(rect.left + 10, rect.top + 10, '#0000ff');
   }
 
-  const attributeChangeCache = new Map();
+  let attributeChangeTimeout = null;
+  let attributeChangeBuffer = [];
 
   /**
    * A MutationObserver to watch for changes to specific element attributes.
@@ -349,43 +350,36 @@
    */
   const observer = new MutationObserver((mutations) => {
     if (!isRecording || !verboseLogging) return;
+
+    clearTimeout(attributeChangeTimeout);
+
     mutations.forEach((mutation) => {
       if (mutation.type === 'attributes') {
-        const target = mutation.target;
-        const attributeName = mutation.attributeName;
-        const newValue = target.getAttribute(attributeName);
-
-        if (mutation.oldValue === newValue) return;
-
-        // Debounce attribute changes to avoid logging rapid-fire updates.
-        const cacheKey = `${getSelector(target)}|${attributeName}`;
-        if (attributeChangeCache.has(cacheKey)) {
-          clearTimeout(attributeChangeCache.get(cacheKey).timeoutId);
-        }
-
-        const timeoutId = setTimeout(() => {
-          const { oldValue } = attributeChangeCache.get(cacheKey);
-          saveAction({
-            type: 'attributeChange',
-            relativeTime: startTime ? Date.now() - startTime : 0,
-            element: getElementInfo(target),
-            attributeName: attributeName,
-            oldValue: oldValue,
+        const newValue = mutation.target.getAttribute(mutation.attributeName);
+        if (mutation.oldValue !== newValue) {
+          attributeChangeBuffer.push({
+            element: getElementInfo(mutation.target),
+            attributeName: mutation.attributeName,
+            oldValue: mutation.oldValue,
             newValue: newValue,
-            url: window.location.href
           });
-          attributeChangeCache.delete(cacheKey);
-        }, 100);
-
-        // Store the original oldValue, not the intermediate one.
-        if (!attributeChangeCache.has(cacheKey)) {
-          attributeChangeCache.set(cacheKey, { oldValue: mutation.oldValue, timeoutId });
-        } else {
-          attributeChangeCache.get(cacheKey).timeoutId = timeoutId;
         }
       }
     });
+
+    attributeChangeTimeout = setTimeout(() => {
+      if (attributeChangeBuffer.length > 0) {
+        saveAction({
+          type: 'batchAttributeChange',
+          relativeTime: startTime ? Date.now() - startTime : 0,
+          changes: attributeChangeBuffer,
+          url: window.location.href
+        });
+        attributeChangeBuffer = [];
+      }
+    }, 200);
   });
+
 
   // Attach all event listeners using capturing to ensure they are caught early.
   document.addEventListener('click', handleClick, true);
