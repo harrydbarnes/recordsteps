@@ -251,13 +251,15 @@
     }
     lastInputElement = target;
     eventSequence = [];
-    const focusData = {
-      type: 'focus',
-      relativeTime: startTime ? Date.now() - startTime : 0,
-      element: getElementInfo(target),
-      url: window.location.href
-    };
-    saveAction(focusData);
+    if (verboseLogging) {
+      const focusData = {
+        type: 'focus',
+        relativeTime: startTime ? Date.now() - startTime : 0,
+        element: getElementInfo(target),
+        url: window.location.href
+      };
+      saveAction(focusData);
+    }
     const rect = target.getBoundingClientRect();
     showFeedback(rect.left + 10, rect.top + 10, '#00ffff');
   }
