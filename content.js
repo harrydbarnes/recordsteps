@@ -18,15 +18,17 @@
   let startTime = null;
   let eventSequence = [];
   let lastInputElement = null;
+  let verboseLogging = false;
 
   /**
    * Initializes the script's state by fetching the current recording status
    * and start time from chrome.storage.
    */
   try {
-    const result = await chrome.storage.local.get(['isRecording', 'startTime']);
+    const result = await chrome.storage.local.get(['isRecording', 'startTime', 'verboseLogging']);
     isRecording = result.isRecording || false;
     startTime = result.startTime || null;
+    verboseLogging = result.verboseLogging || false;
   } catch (e) {
     console.error(`Error initializing content script state: ${e.message}`);
     return; // Stop execution if we can't get the initial state.
@@ -342,7 +344,7 @@
    * @param {MutationObserver} observer The observer instance.
    */
   const observer = new MutationObserver((mutations) => {
-    if (!isRecording) return;
+    if (!isRecording || !verboseLogging) return;
     mutations.forEach((mutation) => {
       // We are only interested in attribute changes.
       if (mutation.type === 'attributes') {
@@ -381,6 +383,7 @@
     if (namespace === 'local') {
       if (changes.isRecording) isRecording = !!changes.isRecording.newValue;
       if (changes.startTime) startTime = changes.startTime.newValue || null;
+      if (changes.verboseLogging) verboseLogging = !!changes.verboseLogging.newValue;
     }
   });
 

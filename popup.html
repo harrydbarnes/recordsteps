@@ -61,12 +61,71 @@
       font-size: 14px;
       color: #666;
     }
+    .settings-container {
+      margin-top: 15px;
+      padding-top: 10px;
+      border-top: 1px solid #ccc;
+    }
+    .setting {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 24px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #ccc;
+      transition: .4s;
+      border-radius: 24px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 4px;
+      bottom: 4px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #2196F3;
+    }
+    input:checked + .slider:before {
+      transform: translateX(16px);
+    }
   </style>
 </head>
 <body>
   <h2>Click Recorder</h2>
   <div id="status" class="idle">Ready to Record</div>
   <div id="clickCount">Clicks recorded: 0</div>
+  <div class="settings-container">
+    <div class="setting">
+      <span>Verbose Logging</span>
+      <label class="switch">
+        <input type="checkbox" id="verboseLogging">
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
   <button id="startBtn">Start Recording</button>
   <button id="stopBtn" disabled>Stop Recording</button>
   <button id="downloadBtn">Download Recording</button>

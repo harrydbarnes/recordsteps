@@ -18,6 +18,7 @@ const downloadBtn = document.getElementById('downloadBtn');
 const clearBtn = document.getElementById('clearBtn');
 const status = document.getElementById('status');
 const clickCount = document.getElementById('clickCount');
+const verboseLogging = document.getElementById('verboseLogging');
 
 /**
  * Adds a listener for the DOMContentLoaded event to initialize the popup's state and UI.
@@ -27,12 +28,13 @@ const clickCount = document.getElementById('clickCount');
  */
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-    chrome.storage.local.get(['isRecording', 'clicks'], (result) => {
+    chrome.storage.local.get(['isRecording', 'clicks', 'verboseLogging'], (result) => {
       if (chrome.runtime.lastError) {
         console.error('Error loading state:', chrome.runtime.lastError);
         return;
       }
       isRecording = result.isRecording || false;
+      verboseLogging.checked = result.verboseLogging || false;
       updateUI();
       updateClickCount(result.clicks || []);
     });
@@ -42,6 +44,10 @@ document.addEventListener('DOMContentLoaded', () => {
     updateUI();
     updateClickCount([]);
   }
+});
+
+verboseLogging.addEventListener('change', () => {
+  chrome.storage.local.set({ verboseLogging: verboseLogging.checked });
 });
 
 /**
