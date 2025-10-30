@@ -346,15 +346,18 @@
     mutations.forEach((mutation) => {
       // We are only interested in attribute changes.
       if (mutation.type === 'attributes') {
-        saveAction({
-          type: 'attributeChange',
-          relativeTime: startTime ? Date.now() - startTime : 0,
-          element: getElementInfo(mutation.target),
-          attributeName: mutation.attributeName,
-          oldValue: mutation.oldValue,
-          newValue: mutation.target.getAttribute(mutation.attributeName),
-          url: window.location.href
-        });
+        const newValue = mutation.target.getAttribute(mutation.attributeName);
+        if (mutation.oldValue !== newValue) {
+          saveAction({
+            type: 'attributeChange',
+            relativeTime: startTime ? Date.now() - startTime : 0,
+            element: getElementInfo(mutation.target),
+            attributeName: mutation.attributeName,
+            oldValue: mutation.oldValue,
+            newValue: newValue,
+            url: window.location.href
+          });
+        }
       }
     });
   });
