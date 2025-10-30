@@ -338,6 +338,8 @@
     showFeedback(rect.left + 10, rect.top + 10, '#0000ff');
   }
 
+  const attributeChangeCache = new Map();
+
   /**
    * A MutationObserver to watch for changes to specific element attributes.
    * This is useful for capturing state changes that don't trigger other events,
@@ -348,19 +350,38 @@
   const observer = new MutationObserver((mutations) => {
     if (!isRecording || !verboseLogging) return;
     mutations.forEach((mutation) => {
-      // We are only interested in attribute changes.
       if (mutation.type === 'attributes') {
-        const newValue = mutation.target.getAttribute(mutation.attributeName);
-        if (mutation.oldValue !== newValue) {
+        const target = mutation.target;
+        const attributeName = mutation.attributeName;
+        const newValue = target.getAttribute(attributeName);
+
+        if (mutation.oldValue === newValue) return;
+
+        // Debounce attribute changes to avoid logging rapid-fire updates.
+        const cacheKey = `${getSelector(target)}|${attributeName}`;
+        if (attributeChangeCache.has(cacheKey)) {
+          clearTimeout(attributeChangeCache.get(cacheKey).timeoutId);
+        }
+
+        const timeoutId = setTimeout(() => {
+          const { oldValue } = attributeChangeCache.get(cacheKey);
           saveAction({
             type: 'attributeChange',
             relativeTime: startTime ? Date.now() - startTime : 0,
-            element: getElementInfo(mutation.target),
-            attributeName: mutation.attributeName,
-            oldValue: mutation.oldValue,
+            element: getElementInfo(target),
+            attributeName: attributeName,
+            oldValue: oldValue,
             newValue: newValue,
             url: window.location.href
           });
+          attributeChangeCache.delete(cacheKey);
+        }, 100);
+
+        // Store the original oldValue, not the intermediate one.
+        if (!attributeChangeCache.has(cacheKey)) {
+          attributeChangeCache.set(cacheKey, { oldValue: mutation.oldValue, timeoutId });
+        } else {
+          attributeChangeCache.get(cacheKey).timeoutId = timeoutId;
         }
       }
     });
