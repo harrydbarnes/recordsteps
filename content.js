@@ -368,6 +368,10 @@
     });
 
     attributeChangeTimeout = setTimeout(() => {
+      if (!isRecording || !verboseLogging) {
+        attributeChangeBuffer = []; // Clear the buffer to prevent sending stale data
+        return;
+      }
       if (attributeChangeBuffer.length > 0) {
         saveAction({
           type: 'batchAttributeChange',

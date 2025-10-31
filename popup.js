@@ -117,7 +117,10 @@ downloadBtn.addEventListener('click', () => {
         return action.changes.map(change => ({
           type: 'attributeChange',
           relativeTime: action.relativeTime,
-          ...change
+          element: change.element,
+          attributeName: change.attributeName,
+          oldValue: change.oldValue,
+          newValue: change.newValue
         }));
       }
       return action;
