@@ -18,15 +18,17 @@
   let startTime = null;
   let eventSequence = [];
   let lastInputElement = null;
+  let verboseLogging = false;
 
   /**
    * Initializes the script's state by fetching the current recording status
    * and start time from chrome.storage.
    */
   try {
-    const result = await chrome.storage.local.get(['isRecording', 'startTime']);
+    const result = await chrome.storage.local.get(['isRecording', 'startTime', 'verboseLogging']);
     isRecording = result.isRecording || false;
     startTime = result.startTime || null;
+    verboseLogging = result.verboseLogging || false;
   } catch (e) {
     console.error(`Error initializing content script state: ${e.message}`);
     return; // Stop execution if we can't get the initial state.
@@ -249,13 +251,15 @@
     }
     lastInputElement = target;
     eventSequence = [];
-    const focusData = {
-      type: 'focus',
-      relativeTime: startTime ? Date.now() - startTime : 0,
-      element: getElementInfo(target),
-      url: window.location.href
-    };
-    saveAction(focusData);
+    if (verboseLogging) {
+      const focusData = {
+        type: 'focus',
+        relativeTime: startTime ? Date.now() - startTime : 0,
+        element: getElementInfo(target),
+        url: window.location.href
+      };
+      saveAction(focusData);
+    }
     const rect = target.getBoundingClientRect();
     showFeedback(rect.left + 10, rect.top + 10, '#00ffff');
   }
@@ -334,6 +338,9 @@
     showFeedback(rect.left + 10, rect.top + 10, '#0000ff');
   }
 
+  let attributeChangeTimeout = null;
+  let attributeChangeBuffer = [];
+
   /**
    * A MutationObserver to watch for changes to specific element attributes.
    * This is useful for capturing state changes that don't trigger other events,
@@ -342,22 +349,41 @@
    * @param {MutationObserver} observer The observer instance.
    */
   const observer = new MutationObserver((mutations) => {
-    if (!isRecording) return;
+    if (!isRecording || !verboseLogging) return;
+
+    clearTimeout(attributeChangeTimeout);
+
     mutations.forEach((mutation) => {
-      // We are only interested in attribute changes.
       if (mutation.type === 'attributes') {
-        saveAction({
-          type: 'attributeChange',
-          relativeTime: startTime ? Date.now() - startTime : 0,
-          element: getElementInfo(mutation.target),
-          attributeName: mutation.attributeName,
-          oldValue: mutation.oldValue,
-          newValue: mutation.target.getAttribute(mutation.attributeName),
-          url: window.location.href
-        });
+        const newValue = mutation.target.getAttribute(mutation.attributeName);
+        if (mutation.oldValue !== newValue) {
+          attributeChangeBuffer.push({
+            element: getElementInfo(mutation.target),
+            attributeName: mutation.attributeName,
+            oldValue: mutation.oldValue,
+            newValue: newValue,
+          });
+        }
       }
     });
+
+    attributeChangeTimeout = setTimeout(() => {
+      if (!isRecording || !verboseLogging) {
+        attributeChangeBuffer = []; // Clear the buffer to prevent sending stale data
+        return;
+      }
+      if (attributeChangeBuffer.length > 0) {
+        saveAction({
+          type: 'batchAttributeChange',
+          relativeTime: startTime ? Date.now() - startTime : 0,
+          changes: attributeChangeBuffer,
+          url: window.location.href
+        });
+        attributeChangeBuffer = [];
+      }
+    }, 200);
   });
+
 
   // Attach all event listeners using capturing to ensure they are caught early.
   document.addEventListener('click', handleClick, true);
@@ -378,6 +404,7 @@
     if (namespace === 'local') {
       if (changes.isRecording) isRecording = !!changes.isRecording.newValue;
       if (changes.startTime) startTime = changes.startTime.newValue || null;
+      if (changes.verboseLogging) verboseLogging = !!changes.verboseLogging.newValue;
     }
   });
 

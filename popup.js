@@ -18,6 +18,7 @@ const downloadBtn = document.getElementById('downloadBtn');
 const clearBtn = document.getElementById('clearBtn');
 const status = document.getElementById('status');
 const clickCount = document.getElementById('clickCount');
+const verboseLogging = document.getElementById('verboseLogging');
 
 /**
  * Adds a listener for the DOMContentLoaded event to initialize the popup's state and UI.
@@ -27,12 +28,13 @@ const clickCount = document.getElementById('clickCount');
  */
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-    chrome.storage.local.get(['isRecording', 'clicks'], (result) => {
+    chrome.storage.local.get(['isRecording', 'clicks', 'verboseLogging'], (result) => {
       if (chrome.runtime.lastError) {
         console.error('Error loading state:', chrome.runtime.lastError);
         return;
       }
       isRecording = result.isRecording || false;
+      verboseLogging.checked = result.verboseLogging || false;
       updateUI();
       updateClickCount(result.clicks || []);
     });
@@ -42,6 +44,10 @@ document.addEventListener('DOMContentLoaded', () => {
     updateUI();
     updateClickCount([]);
   }
+});
+
+verboseLogging.addEventListener('change', () => {
+  chrome.storage.local.set({ verboseLogging: verboseLogging.checked });
 });
 
 /**
@@ -106,10 +112,24 @@ downloadBtn.addEventListener('click', () => {
       return;
     }
     
+    const flattenedClicks = clicks.flatMap(action => {
+      if (action.type === 'batchAttributeChange') {
+        return action.changes.map(change => ({
+          type: 'attributeChange',
+          relativeTime: action.relativeTime,
+          element: change.element,
+          attributeName: change.attributeName,
+          oldValue: change.oldValue,
+          newValue: change.newValue
+        }));
+      }
+      return action;
+    });
+
     const data = {
-      recording: clicks,
-      totalActions: clicks.length,
-      duration: clicks.length > 0 ? clicks[clicks.length - 1].timestamp - clicks[0].timestamp : 0,
+      recording: flattenedClicks,
+      totalActions: flattenedClicks.length,
+      duration: flattenedClicks.length > 0 ? flattenedClicks[flattenedClicks.length - 1].relativeTime : 0,
       recordedAt: new Date().toISOString()
     };
     
@@ -163,7 +183,13 @@ function updateUI() {
  * @param {Array<object>} clicks The array of recorded click/action objects.
  */
 function updateClickCount(clicks) {
-  clickCount.textContent = `Actions recorded: ${clicks.length}`;
+  const count = clicks.reduce((acc, action) => {
+    if (action.type === 'batchAttributeChange') {
+      return acc + action.changes.length;
+    }
+    return acc + 1;
+  }, 0);
+  clickCount.textContent = `Actions recorded: ${count}`;
 }
 
 /**
