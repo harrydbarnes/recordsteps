@@ -27,8 +27,8 @@
    */
   function parseLoggingLevel(level) {
     const parsed = parseInt(level, 10);
-    if (isNaN(parsed) || parsed < 0 || parsed > 3) {
-      return 0; // Default to Minimal if invalid or out of range
+    if (isNaN(parsed) || parsed < LOGGING_LEVELS.MINIMAL || parsed > LOGGING_LEVELS.VERBOSE) {
+      return LOGGING_LEVELS.MINIMAL; // Default to Minimal if invalid or out of range
     }
     return parsed;
   }
