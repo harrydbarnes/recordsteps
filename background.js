@@ -2,17 +2,19 @@
  * @fileoverview The background script (service worker) for the Record Steps extension.
  * It manages the extension's state, handles script injection, and processes data
  * sent from the content script and popup.
+ * Sets default logging level on install.
  */
 
 /**
  * Initializes the extension's storage when it's installed or updated.
- * Sets the default recording state and an empty array for clicks.
+ * Sets the default recording state, logging level, and an empty array for clicks.
  * @listens chrome.runtime.onInstalled
  */
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.set({
     isRecording: false,
-    clicks: []
+    clicks: [],
+    loggingLevel: 0 // Default to Minimal
   });
 });
 
