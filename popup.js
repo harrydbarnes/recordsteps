@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       isRecording = result.isRecording || false;
 
-      const savedLevel = result.loggingLevel !== undefined ? result.loggingLevel : 0;
+      const savedLevel = result.loggingLevel ?? 0;
       loggingLevelSelect.value = savedLevel;
       updateDescription(savedLevel);
 

@@ -379,12 +379,6 @@
       if (mutation.type === 'attributes') {
         const attrName = mutation.attributeName;
 
-        // LEVEL 2 FILTER:
-        // If Level is 'Detailed' (2), skip noisy attributes like class, style, width, height.
-        if (loggingLevel === 2) {
-          if (['class', 'style', 'width', 'height'].includes(attrName)) return;
-        }
-
         const newValue = mutation.target.getAttribute(attrName);
         if (mutation.oldValue !== newValue) {
           attributeChangeBuffer.push({
@@ -424,11 +418,22 @@
 
     // Only connect if we are recording AND logging level is Detailed (2) or Verbose (3)
     if (isRecording && loggingLevel >= 2) {
-      observer.observe(document.body, {
+      const observerConfig = {
         attributes: true,
         attributeOldValue: true,
         subtree: true
-      });
+      };
+
+      // For 'Detailed' level (2), use a performant whitelist filter for functional attributes.
+      if (loggingLevel === 2) {
+        observerConfig.attributeFilter = [
+          'disabled', 'hidden', 'readonly', 'checked', 'selected',
+          'aria-checked', 'aria-disabled', 'aria-expanded', 'aria-hidden',
+          'aria-pressed', 'aria-selected', 'role', 'data-state', 'value'
+        ];
+      }
+
+      observer.observe(document.body, observerConfig);
     }
   }
 
