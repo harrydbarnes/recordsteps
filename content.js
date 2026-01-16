@@ -16,13 +16,6 @@
   let eventSequence = [];
   let lastInputElement = null;
 
-  const LOGGING_LEVELS = {
-    MINIMAL: 0,
-    STANDARD: 1,
-    DETAILED: 2,
-    VERBOSE: 3
-  };
-
   // 0=Minimal, 1=Standard, 2=Detailed, 3=Verbose
   let loggingLevel = 0;
 

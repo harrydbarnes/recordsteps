@@ -12,13 +12,6 @@
  */
 let isRecording = false;
 
-const LOGGING_LEVELS = {
-  MINIMAL: 0,
-  STANDARD: 1,
-  DETAILED: 2,
-  VERBOSE: 3
-};
-
 // DOM element references
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');

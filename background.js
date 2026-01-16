@@ -60,7 +60,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             try {
               await chrome.scripting.executeScript({
                 target: { tabId: tab.id, frameIds: [frame.frameId] },
-                files: ['content.js'],
+                files: ['constants.js', 'content.js'],
               });
             } catch (e) {
               // Log errors for frames that couldn't be injected, but don't stop the process.
@@ -141,7 +141,7 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
       try {
         await chrome.scripting.executeScript({
           target: { tabId: details.tabId, frameIds: [details.frameId] },
-          files: ['content.js'],
+          files: ['constants.js', 'content.js'],
         });
       } catch (e) {
         // The "already injected" message is not a critical error, so we can ignore it.
