@@ -1,9 +1,6 @@
 /**
  * @fileoverview Content script for the Record Steps extension.
- * This script is injected into web pages to record user interactions.
- * It captures events like clicks, keyboard inputs, and focus changes,
- * collects detailed information about the target elements, and sends
- * the data to the background script for storage.
+ * Now supports configurable logging levels (0-3).
  */
 
 /**
@@ -18,20 +15,32 @@
   let startTime = null;
   let eventSequence = [];
   let lastInputElement = null;
-  let verboseLogging = false;
+
+  // 0=Minimal, 1=Standard, 2=Detailed, 3=Verbose
+  let loggingLevel = 0;
 
   /**
-   * Initializes the script's state by fetching the current recording status
-   * and start time from chrome.storage.
+   * Parses the logging level to ensure it's a valid integer.
+   * Defaults to 0 if invalid.
+   * @param {any} level The logging level to parse.
+   * @returns {number} The parsed logging level (0-3).
    */
+  function parseLoggingLevel(level) {
+    const parsed = parseInt(level, 10);
+    if (isNaN(parsed) || parsed < LOGGING_LEVELS.MINIMAL || parsed > LOGGING_LEVELS.VERBOSE) {
+      return LOGGING_LEVELS.MINIMAL; // Default to Minimal if invalid or out of range
+    }
+    return parsed;
+  }
+
   try {
-    const result = await chrome.storage.local.get(['isRecording', 'startTime', 'verboseLogging']);
+    const result = await chrome.storage.local.get(['isRecording', 'startTime', 'loggingLevel']);
     isRecording = result.isRecording || false;
     startTime = result.startTime || null;
-    verboseLogging = result.verboseLogging || false;
+    loggingLevel = parseLoggingLevel(result.loggingLevel);
   } catch (e) {
     console.error(`Error initializing content script state: ${e.message}`);
-    return; // Stop execution if we can't get the initial state.
+    return;
   }
 
   // --- Utility Functions ---
@@ -49,7 +58,9 @@
       try {
         if (document.querySelectorAll(idSelector).length === 1) return idSelector;
       } catch(e) {
-        console.warn('Invalid ID selector generated, falling back to path:', idSelector, e);
+        if (loggingLevel >= 3) {
+          console.warn('Invalid ID selector generated, falling back to path:', idSelector, e);
+        }
       }
     }
     if (element.className) {
@@ -60,7 +71,9 @@
         try {
           if (document.querySelectorAll(selector).length === 1) return selector;
         } catch (e) {
-          console.warn('Invalid class selector generated, falling back to path:', selector, e);
+          if (loggingLevel >= 3) {
+            console.warn('Invalid class selector generated, falling back to path:', selector, e);
+          }
         }
       }
     }
@@ -94,15 +107,12 @@
   function getShadowDOMPath(element) {
     const path = [];
     let current = element;
-    // Ascend from the element's location
     while (current && current.parentElement) {
       const root = current.getRootNode();
       if (root instanceof ShadowRoot) {
-        // We are in a shadow DOM, so get the host and add its selector to the path
         path.unshift(getSelector(root.host));
         current = root.host;
       } else {
-        // We've reached the light DOM
         break;
       }
     }
@@ -240,18 +250,29 @@
   }
 
   /**
-   * Handles focus events on the document, targeting input-like elements.
+   * Handles focus events on the document.
+   * Tracks input sequences and logs focus events if the logging level is sufficient.
    * @param {FocusEvent} e The focus event object.
    */
   function handleFocus(e) {
     const target = e.target;
-    if (!isRecording || !(target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+    // Log focus if recording AND (input element OR Level 1+ Standard Logging)
+    if (!isRecording) return;
+
+    // Always track inputs for typing sequences regardless of level
+    const isInput = (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+
+    if (!isInput && loggingLevel < 1) return; // Skip non-inputs on Minimal level
+
     if (lastInputElement && lastInputElement !== target) {
       flushInputEvents();
     }
-    lastInputElement = target;
+
+    if (isInput) lastInputElement = target;
     eventSequence = [];
-    if (verboseLogging) {
+
+    // Only save the Focus event itself if Level >= 1
+    if (loggingLevel >= 1) {
       const focusData = {
         type: 'focus',
         relativeTime: startTime ? Date.now() - startTime : 0,
@@ -260,6 +281,7 @@
       };
       saveAction(focusData);
     }
+
     const rect = target.getBoundingClientRect();
     showFeedback(rect.left + 10, rect.top + 10, '#00ffff');
   }
@@ -321,10 +343,8 @@
     const pastedText = e.clipboardData?.getData('text') || null;
 
     if (e.target === lastInputElement) {
-      // If paste happens on the focused input, only add it to the sequence.
       eventSequence.push({ type: 'paste', relativeTime: eventTime, pastedText: pastedText });
     } else {
-      // If paste happens elsewhere, save it as a standalone event.
       const pasteData = {
         type: 'paste',
         relativeTime: eventTime,
@@ -338,6 +358,8 @@
     showFeedback(rect.left + 10, rect.top + 10, '#0000ff');
   }
 
+  // --- Mutation Observer for Attributes (Level 2 & 3) ---
+
   let attributeChangeTimeout = null;
   let attributeChangeBuffer = [];
 
@@ -346,20 +368,22 @@
    * This is useful for capturing state changes that don't trigger other events,
    * such as a button becoming enabled or a class name changing.
    * @param {MutationRecord[]} mutations An array of mutation records provided by the observer.
-   * @param {MutationObserver} observer The observer instance.
    */
   const observer = new MutationObserver((mutations) => {
-    if (!isRecording || !verboseLogging) return;
+    // If Minimal (0) or Standard (1), do NOT record attribute changes.
+    if (!isRecording || loggingLevel < 2) return;
 
     clearTimeout(attributeChangeTimeout);
 
     mutations.forEach((mutation) => {
       if (mutation.type === 'attributes') {
-        const newValue = mutation.target.getAttribute(mutation.attributeName);
+        const attrName = mutation.attributeName;
+
+        const newValue = mutation.target.getAttribute(attrName);
         if (mutation.oldValue !== newValue) {
           attributeChangeBuffer.push({
             element: getElementInfo(mutation.target),
-            attributeName: mutation.attributeName,
+            attributeName: attrName,
             oldValue: mutation.oldValue,
             newValue: newValue,
           });
@@ -368,8 +392,8 @@
     });
 
     attributeChangeTimeout = setTimeout(() => {
-      if (!isRecording || !verboseLogging) {
-        attributeChangeBuffer = []; // Clear the buffer to prevent sending stale data
+      if (!isRecording || loggingLevel < 2) {
+        attributeChangeBuffer = [];
         return;
       }
       if (attributeChangeBuffer.length > 0) {
@@ -384,15 +408,44 @@
     }, 200);
   });
 
+  /**
+   * Updates the observer's state (connected/disconnected) based on recording status
+   * and logging level.
+   * Optimizes performance by disconnecting the observer when not needed.
+   */
+  function updateObserverState() {
+    observer.disconnect();
 
-  // Attach all event listeners using capturing to ensure they are caught early.
+    // Only connect if we are recording AND logging level is Detailed (2) or Verbose (3)
+    if (isRecording && loggingLevel >= 2) {
+      const observerConfig = {
+        attributes: true,
+        attributeOldValue: true,
+        subtree: true
+      };
+
+      // For 'Detailed' level (2), use a performant whitelist filter for functional attributes.
+      if (loggingLevel === 2) {
+        observerConfig.attributeFilter = [
+          'disabled', 'hidden', 'readonly', 'checked', 'selected',
+          'aria-checked', 'aria-disabled', 'aria-expanded', 'aria-hidden',
+          'aria-pressed', 'aria-selected', 'role', 'data-state', 'value'
+        ];
+      }
+
+      observer.observe(document.body, observerConfig);
+    }
+  }
+
   document.addEventListener('click', handleClick, true);
   document.addEventListener('focus', handleFocus, true);
   document.addEventListener('blur', handleBlur, true);
   document.addEventListener('input', handleInput, true);
   document.addEventListener('keydown', handleKeydown, true);
   document.addEventListener('paste', handlePaste, true);
-  observer.observe(document.body, { attributes: true, attributeOldValue: true, subtree: true, attributeFilter: ['class', 'disabled', 'aria-checked', 'data-state', 'aria-disabled'] });
+
+  // Initialize observer state
+  updateObserverState();
 
   /**
    * Listens for changes in chrome.storage to keep the content script's state
@@ -402,9 +455,23 @@
    */
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'local') {
-      if (changes.isRecording) isRecording = !!changes.isRecording.newValue;
+      let shouldUpdateObserver = false;
+
+      if (changes.isRecording) {
+        isRecording = !!changes.isRecording.newValue;
+        shouldUpdateObserver = true;
+      }
+
       if (changes.startTime) startTime = changes.startTime.newValue || null;
-      if (changes.verboseLogging) verboseLogging = !!changes.verboseLogging.newValue;
+
+      if (changes.loggingLevel) {
+        loggingLevel = parseLoggingLevel(changes.loggingLevel.newValue);
+        shouldUpdateObserver = true;
+      }
+
+      if (shouldUpdateObserver) {
+        updateObserverState();
+      }
     }
   });
 
