@@ -3,6 +3,12 @@
  * Now supports configurable logging levels (0-3).
  */
 
+/**
+ * @description An Immediately Invoked Function Expression (IIFE) that serves
+ * as the main entry point for the content script. It initializes state,
+ * sets up all event listeners, and handles communication with the background script.
+ * The async nature allows for top-level await during state initialization.
+ */
 (async () => {
   // --- State Initialization ---
   let isRecording = false;
@@ -361,6 +367,7 @@
    * A MutationObserver to watch for changes to specific element attributes.
    * This is useful for capturing state changes that don't trigger other events,
    * such as a button becoming enabled or a class name changing.
+   * @param {MutationRecord[]} mutations An array of mutation records provided by the observer.
    */
   const observer = new MutationObserver((mutations) => {
     // If Minimal (0) or Standard (1), do NOT record attribute changes.
@@ -435,6 +442,12 @@
   // Initialize observer state
   updateObserverState();
 
+  /**
+   * Listens for changes in chrome.storage to keep the content script's state
+   * (isRecording, startTime) in sync with the rest of the extension.
+   * @param {object} changes Object describing the changes.
+   * @param {string} namespace The storage area ('local' or 'sync') that changed.
+   */
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'local') {
       let shouldUpdateObserver = false;
@@ -457,6 +470,10 @@
     }
   });
 
+  /**
+   * On initial script injection, if recording is already active,
+   * log a 'pageLoad' event to mark the entry point.
+   */
   if (isRecording) {
     saveAction({ type: 'pageLoad', relativeTime: startTime ? Date.now() - startTime : 0, url: window.location.href, title: document.title });
   }
