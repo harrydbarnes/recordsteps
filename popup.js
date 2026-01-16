@@ -23,10 +23,10 @@ const loggingLevelSelect = document.getElementById('loggingLevel');
 const loggingDescription = document.getElementById('loggingDescription');
 
 const LOGGING_DESCRIPTIONS = {
-  0: "Records clicks, typing, and navigation. Best for clean test scripts.",
-  1: "Adds focus events. Useful for tracking field entry order.",
-  2: "Adds functional state changes (disabled, checked, hidden). Good for logic debugging.",
-  3: "Records ALL attribute changes (including styles/classes). Use for deep UI debugging."
+  [LOGGING_LEVELS.MINIMAL]: "Records clicks, typing, and navigation. Best for clean test scripts.",
+  [LOGGING_LEVELS.STANDARD]: "Adds focus events. Useful for tracking field entry order.",
+  [LOGGING_LEVELS.DETAILED]: "Adds functional state changes (disabled, checked, hidden). Good for logic debugging.",
+  [LOGGING_LEVELS.VERBOSE]: "Records ALL attribute changes (including styles/classes). Use for deep UI debugging."
 };
 
 /**
