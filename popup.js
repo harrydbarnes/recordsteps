@@ -1,6 +1,6 @@
 /**
  * @fileoverview Script for the popup UI of the Record Steps extension.
- * Updated to handle 4-level logging state.
+ * Updated to handle 4-level logging state with descriptive text.
  */
 
 let isRecording = false;
@@ -12,11 +12,18 @@ const downloadBtn = document.getElementById('downloadBtn');
 const clearBtn = document.getElementById('clearBtn');
 const status = document.getElementById('status');
 const clickCount = document.getElementById('clickCount');
-const loggingLevelSelect = document.getElementById('loggingLevel'); // New Select Element
+const loggingLevelSelect = document.getElementById('loggingLevel');
+const loggingDescription = document.getElementById('loggingDescription');
+
+const LOGGING_DESCRIPTIONS = {
+  0: "Records clicks, typing, and navigation. Best for clean test scripts.",
+  1: "Adds focus events. Useful for tracking field entry order.",
+  2: "Adds functional state changes (disabled, checked, hidden). Good for logic debugging.",
+  3: "Records ALL attribute changes (including styles/classes). Use for deep UI debugging."
+};
 
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-    // Fetch 'loggingLevel' instead of 'verboseLogging'
     chrome.storage.local.get(['isRecording', 'clicks', 'loggingLevel'], (result) => {
       if (chrome.runtime.lastError) {
         console.error('Error loading state:', chrome.runtime.lastError);
@@ -24,9 +31,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       isRecording = result.isRecording || false;
 
-      // Set dropdown value (Default to 0)
       const savedLevel = result.loggingLevel !== undefined ? result.loggingLevel : 0;
       loggingLevelSelect.value = savedLevel;
+      updateDescription(savedLevel);
 
       updateUI();
       updateClickCount(result.clicks || []);
@@ -38,17 +45,22 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// Listener for the new dropdown
 loggingLevelSelect.addEventListener('change', () => {
   const level = parseInt(loggingLevelSelect.value, 10);
   chrome.storage.local.set({ loggingLevel: level });
+  updateDescription(level);
 });
+
+function updateDescription(level) {
+  loggingDescription.textContent = LOGGING_DESCRIPTIONS[level] || LOGGING_DESCRIPTIONS[0];
+}
 
 startBtn.addEventListener('click', () => {
   isRecording = true;
   updateUI();
   chrome.runtime.sendMessage({ action: 'startRecording' }, (response) => {
     if (chrome.runtime.lastError || (response && !response.success)) {
+      console.error('Failed to start recording:', chrome.runtime.lastError?.message || response?.error);
       isRecording = false;
       updateUI();
     }
@@ -60,6 +72,7 @@ stopBtn.addEventListener('click', () => {
   updateUI();
   chrome.runtime.sendMessage({ action: 'stopRecording' }, (response) => {
     if (chrome.runtime.lastError || (response && !response.success)) {
+      console.error('Failed to stop recording:', chrome.runtime.lastError?.message || response?.error);
       isRecording = true;
       updateUI();
     }
@@ -68,8 +81,12 @@ stopBtn.addEventListener('click', () => {
 
 downloadBtn.addEventListener('click', () => {
   chrome.storage.local.get(['clicks'], (result) => {
-    // ... (Keep existing download logic exactly the same)
-    if (chrome.runtime.lastError) return;
+    if (chrome.runtime.lastError) {
+      console.error('Error loading clicks:', chrome.runtime.lastError);
+      alert('Error loading recorded data');
+      return;
+    }
+
     const clicks = result.clicks || [];
     if (clicks.length === 0) {
       alert('No actions recorded yet!');
@@ -111,7 +128,11 @@ downloadBtn.addEventListener('click', () => {
 clearBtn.addEventListener('click', () => {
   if (confirm('Clear all recorded actions?')) {
     chrome.storage.local.set({ clicks: [] }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('Error clearing data:', chrome.runtime.lastError);
+      } else {
         updateClickCount([]);
+      }
     });
   }
 });
@@ -122,7 +143,7 @@ function updateUI() {
     status.className = 'recording';
     startBtn.disabled = true;
     stopBtn.disabled = false;
-    loggingLevelSelect.disabled = true; // Lock settings while recording
+    loggingLevelSelect.disabled = true;
   } else {
     status.textContent = 'Ready to Record';
     status.className = 'idle';

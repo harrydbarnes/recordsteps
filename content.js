@@ -13,13 +13,22 @@
   // 0=Minimal, 1=Standard, 2=Detailed, 3=Verbose
   let loggingLevel = 0;
 
+  /**
+   * Parses the logging level to ensure it's a valid integer.
+   * Defaults to 0 if invalid.
+   * @param {any} level The logging level to parse.
+   * @returns {number} The parsed logging level (0-3).
+   */
+  function parseLoggingLevel(level) {
+    const parsed = parseInt(level, 10);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+
   try {
     const result = await chrome.storage.local.get(['isRecording', 'startTime', 'loggingLevel']);
     isRecording = result.isRecording || false;
     startTime = result.startTime || null;
-    // Default to 0 (Minimal) if not set
-    loggingLevel = parseInt(result.loggingLevel, 10);
-    if (isNaN(loggingLevel)) loggingLevel = 0;
+    loggingLevel = parseLoggingLevel(result.loggingLevel);
   } catch (e) {
     console.error(`Error initializing content script state: ${e.message}`);
     return;
@@ -27,12 +36,23 @@
 
   // --- Utility Functions ---
 
+  /**
+   * Generates a unique and stable CSS selector for a given HTML element.
+   * It prioritizes IDs, then unique class names, and falls back to a path
+   * of tag names and nth-of-type pseudo-classes.
+   * @param {HTMLElement} element The element to generate a selector for.
+   * @returns {string} A CSS selector string.
+   */
   function getSelector(element) {
     if (element.id) {
       const idSelector = `#${CSS.escape(element.id)}`;
       try {
         if (document.querySelectorAll(idSelector).length === 1) return idSelector;
-      } catch(e) { /* ignore */ }
+      } catch(e) {
+        if (loggingLevel >= 3) {
+          console.warn('Invalid ID selector generated, falling back to path:', idSelector, e);
+        }
+      }
     }
     if (element.className) {
       const className = (typeof element.className === 'string') ? element.className : (element.className.baseVal || '');
@@ -41,7 +61,11 @@
         const selector = `${element.tagName.toLowerCase()}${classes}`;
         try {
           if (document.querySelectorAll(selector).length === 1) return selector;
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          if (loggingLevel >= 3) {
+            console.warn('Invalid class selector generated, falling back to path:', selector, e);
+          }
+        }
       }
     }
     let path = [];
@@ -65,6 +89,12 @@
     return path.join(' > ');
   }
 
+  /**
+   * Generates an array of CSS selectors representing the path through
+   * nested Shadow DOMs to reach a target element.
+   * @param {HTMLElement} element The element to trace the shadow path for.
+   * @returns {string[]} An array of selectors for shadow hosts, from the outermost to the innermost.
+   */
   function getShadowDOMPath(element) {
     const path = [];
     let current = element;
@@ -80,6 +110,12 @@
     return path;
   }
 
+  /**
+   * Collects a comprehensive set of properties from an HTML element.
+   * This includes its selector, dimensions, attributes, and computed styles.
+   * @param {HTMLElement} element The element to inspect.
+   * @returns {object | null} An object containing detailed information about the element, or null if the element is invalid.
+   */
   function getElementInfo(element) {
     if (!element) return null;
     const computedStyle = window.getComputedStyle(element);
@@ -119,6 +155,10 @@
     return info;
   }
 
+  /**
+   * Sends a recorded action to the background script for storage.
+   * @param {object} actionData The data object representing the user action.
+   */
   function saveAction(actionData) {
     chrome.runtime.sendMessage({ action: 'recordAction', data: actionData }, response => {
       if (chrome.runtime.lastError || (response && !response.success)) {
@@ -127,6 +167,10 @@
     });
   }
 
+  /**
+   * Processes and saves the sequence of keyboard events for the last focused input element.
+   * This is called when the input element loses focus (blur) or another element is focused.
+   */
   function flushInputEvents() {
     if (lastInputElement && eventSequence.length > 0) {
       const sequenceData = {
@@ -142,6 +186,13 @@
     eventSequence = [];
   }
 
+  /**
+   * Displays a visual feedback indicator on the page at the specified coordinates.
+   * This is used to show the user where an event was recorded.
+   * @param {number} x The horizontal coordinate.
+   * @param {number} y The vertical coordinate.
+   * @param {string} [color='#ff0000'] The color of the indicator.
+   */
   function showFeedback(x, y, color = '#ff0000') {
     const indicator = document.createElement('div');
     indicator.style.cssText = `
@@ -173,6 +224,10 @@
 
   // --- Event Listeners ---
 
+  /**
+   * Handles click events on the document.
+   * @param {MouseEvent} e The mouse event object.
+   */
   function handleClick(e) {
     if (!isRecording) return;
     const clickData = {
@@ -185,6 +240,11 @@
     showFeedback(e.clientX, e.clientY, '#ff0000');
   }
 
+  /**
+   * Handles focus events on the document.
+   * Tracks input sequences and logs focus events if the logging level is sufficient.
+   * @param {FocusEvent} e The focus event object.
+   */
   function handleFocus(e) {
     const target = e.target;
     // Log focus if recording AND (input element OR Level 1+ Standard Logging)
@@ -217,12 +277,22 @@
     showFeedback(rect.left + 10, rect.top + 10, '#00ffff');
   }
 
+  /**
+   * Handles blur events on any element. If the blurred element is the one
+   * we are tracking for input, it flushes (saves) the collected event sequence.
+   * @param {FocusEvent} e The focus event object.
+   */
   function handleBlur(e) {
     if (!isRecording || e.target !== lastInputElement) return;
     flushInputEvents();
     lastInputElement = null;
   }
 
+  /**
+   * Handles keydown events. It groups events for the currently focused input
+   * or records special key presses on other elements.
+   * @param {KeyboardEvent} e The keyboard event object.
+   */
   function handleKeydown(e) {
     if (!isRecording) return;
     const eventTime = startTime ? Date.now() - startTime : 0;
@@ -241,11 +311,23 @@
     }
   }
 
+  /**
+   * Handles the `input` event, which fires when the value of an `<input>`,
+   * `<select>`, or `<textarea>` element has been changed. Adds the event
+   * to the current sequence for the focused element.
+   * @param {InputEvent} e The input event object.
+   */
   function handleInput(e) {
     if (!isRecording || e.target !== lastInputElement) return;
     eventSequence.push({ type: 'input', relativeTime: startTime ? Date.now() - startTime : 0, inputType: e.inputType, data: e.data, value: e.target.value });
   }
 
+  /**
+   * Handles the `paste` event. It captures the pasted text and either adds
+   * it to the current input sequence or records it as a standalone event
+   * if the target is not a tracked input field.
+   * @param {ClipboardEvent} e The clipboard event object.
+   */
   function handlePaste(e) {
     if (!isRecording) return;
     const eventTime = startTime ? Date.now() - startTime : 0;
@@ -272,6 +354,11 @@
   let attributeChangeTimeout = null;
   let attributeChangeBuffer = [];
 
+  /**
+   * A MutationObserver to watch for changes to specific element attributes.
+   * This is useful for capturing state changes that don't trigger other events,
+   * such as a button becoming enabled or a class name changing.
+   */
   const observer = new MutationObserver((mutations) => {
     // If Minimal (0) or Standard (1), do NOT record attribute changes.
     if (!isRecording || loggingLevel < 2) return;
@@ -285,7 +372,7 @@
         // LEVEL 2 FILTER:
         // If Level is 'Detailed' (2), skip noisy attributes like class, style, width, height.
         if (loggingLevel === 2) {
-          if (['class', 'style', 'width', 'height', 'hidden'].includes(attrName)) return;
+          if (['class', 'style', 'width', 'height'].includes(attrName)) return;
         }
 
         const newValue = mutation.target.getAttribute(attrName);
@@ -317,6 +404,24 @@
     }, 200);
   });
 
+  /**
+   * Updates the observer's state (connected/disconnected) based on recording status
+   * and logging level.
+   * Optimizes performance by disconnecting the observer when not needed.
+   */
+  function updateObserverState() {
+    observer.disconnect();
+
+    // Only connect if we are recording AND logging level is Detailed (2) or Verbose (3)
+    if (isRecording && loggingLevel >= 2) {
+      observer.observe(document.body, {
+        attributes: true,
+        attributeOldValue: true,
+        subtree: true
+      });
+    }
+  }
+
   document.addEventListener('click', handleClick, true);
   document.addEventListener('focus', handleFocus, true);
   document.addEventListener('blur', handleBlur, true);
@@ -324,23 +429,27 @@
   document.addEventListener('keydown', handleKeydown, true);
   document.addEventListener('paste', handlePaste, true);
 
-  // Observe everything initially; filtering happens inside the callback
-  observer.observe(document.body, {
-    attributes: true,
-    attributeOldValue: true,
-    subtree: true
-    // We remove 'attributeFilter' here to allow the dynamic logic inside the observer
-    // to decide what to keep based on loggingLevel.
-  });
+  // Initialize observer state
+  updateObserverState();
 
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'local') {
-      if (changes.isRecording) isRecording = !!changes.isRecording.newValue;
+      let shouldUpdateObserver = false;
+
+      if (changes.isRecording) {
+        isRecording = !!changes.isRecording.newValue;
+        shouldUpdateObserver = true;
+      }
+
       if (changes.startTime) startTime = changes.startTime.newValue || null;
-      // Update logging level dynamically
+
       if (changes.loggingLevel) {
-        loggingLevel = parseInt(changes.loggingLevel.newValue, 10);
-        if (isNaN(loggingLevel)) loggingLevel = 0;
+        loggingLevel = parseLoggingLevel(changes.loggingLevel.newValue);
+        shouldUpdateObserver = true;
+      }
+
+      if (shouldUpdateObserver) {
+        updateObserverState();
       }
     }
   });
