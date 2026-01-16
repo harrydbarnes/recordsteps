@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Record Steps",
   "version": "1.0",
-  "description": "Records clicks, keyboard actions and timing for aiding automation",
+  "description": "Records clicks, keyboard actions and timings for aiding automations",
   "permissions": [
     "activeTab",
     "scripting",
