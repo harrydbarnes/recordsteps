@@ -47,12 +47,26 @@
 
   /**
    * Generates a unique and stable CSS selector for a given HTML element.
-   * It prioritizes IDs, then unique class names, and falls back to a path
+   * It prioritizes test attributes, IDs, then unique class names, and falls back to a path
    * of tag names and nth-of-type pseudo-classes.
    * @param {HTMLElement} element The element to generate a selector for.
    * @returns {string} A CSS selector string.
    */
   function getSelector(element) {
+    // Prioritize test attributes for stability
+    const testAttributes = ['data-testid', 'data-cy', 'data-test-id', 'data-test'];
+    for (const attr of testAttributes) {
+      if (element.hasAttribute(attr)) {
+        const value = element.getAttribute(attr);
+        const selector = `[${attr}="${CSS.escape(value)}"]`;
+        try {
+          if (document.querySelectorAll(selector).length === 1) return selector;
+        } catch (e) {
+            // Ignore invalid selector errors
+        }
+      }
+    }
+
     if (element.id) {
       const idSelector = `#${CSS.escape(element.id)}`;
       try {

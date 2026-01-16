@@ -5,6 +5,12 @@
  * Sets default logging level on install.
  */
 
+try {
+  importScripts('constants.js');
+} catch (e) {
+  console.error(e);
+}
+
 /**
  * Initializes the extension's storage when it's installed or updated.
  * Sets the default recording state, logging level, and an empty array for clicks.
@@ -14,7 +20,7 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.set({
     isRecording: false,
     clicks: [],
-    loggingLevel: 0 // Default to Minimal
+    loggingLevel: LOGGING_LEVELS.MINIMAL // Default to Minimal
   });
 });
 
@@ -119,16 +125,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 /**
- * Listens for navigation events, specifically when a page or frame has finished loading.
- * If recording is active, it injects the content script into the newly loaded frame.
- * This ensures that recording continues seamlessly across page navigations.
- * @listens chrome.webNavigation.onCompleted
+ * Listens for navigation events, specifically when a navigation is committed.
+ * If recording is active, it injects the content script into the newly loaded frame early.
+ * This ensures that recording continues seamlessly across page navigations and captures early interactions.
+ * @listens chrome.webNavigation.onCommitted
  * @param {object} details Information about the navigation event.
  * @param {number} details.tabId The ID of the tab where the navigation occurred.
  * @param {number} details.frameId The ID of the frame that has completed loading.
  * @param {string} details.url The URL of the loaded frame.
  */
-chrome.webNavigation.onCompleted.addListener(async (details) => {
+chrome.webNavigation.onCommitted.addListener(async (details) => {
   // Filter for http/https URLs only, but allow all frames.
   if (!details.url.startsWith('http')) {
     return;
@@ -142,6 +148,7 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
         await chrome.scripting.executeScript({
           target: { tabId: details.tabId, frameIds: [details.frameId] },
           files: ['constants.js', 'content.js'],
+          injectImmediately: true,
         });
       } catch (e) {
         // The "already injected" message is not a critical error, so we can ignore it.
@@ -153,6 +160,6 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
   } catch (e) {
     // This will primarily catch errors from the storage API.
     // It's not a critical error in our workflow, so we log it for debugging purposes.
-    console.error(`Error during webNavigation.onCompleted for tab ${details.tabId}: ${e.message}`);
+    console.error(`Error during webNavigation.onCommitted for tab ${details.tabId}: ${e.message}`);
   }
 });
