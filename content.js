@@ -395,8 +395,8 @@
       type: 'input',
       relativeTime: startTime ? Date.now() - startTime : 0,
       inputType: e.inputType,
-      data: isTargetSensitive ? '[REDACTED]' : e.data,
-      value: isTargetSensitive ? '[REDACTED]' : e.target.value
+      data: isTargetSensitive && e.data ? '[REDACTED]' : e.data,
+      value: isTargetSensitive && e.target.value ? '[REDACTED]' : e.target.value
     });
   }
 
