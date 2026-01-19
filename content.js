@@ -233,12 +233,13 @@
    */
   function flushInputEvents() {
     if (lastInputElement && eventSequence.length > 0) {
+      const isTargetSensitive = isSensitive(lastInputElement);
       const sequenceData = {
         type: 'inputSequence',
         relativeTime: eventSequence[0].relativeTime,
         element: getElementInfo(lastInputElement),
         events: eventSequence,
-        finalValue: lastInputElement.value,
+        finalValue: isTargetSensitive ? '[REDACTED]' : lastInputElement.value,
         url: window.location.href,
       };
       saveAction(sequenceData);
@@ -362,7 +363,13 @@
     const eventTime = startTime ? Date.now() - startTime : 0;
 
     if (e.target === lastInputElement) {
-      eventSequence.push({ type: 'keydown', relativeTime: eventTime, key: e.key, code: e.code });
+      const isTargetSensitive = isSensitive(lastInputElement);
+      eventSequence.push({
+        type: 'keydown',
+        relativeTime: eventTime,
+        key: isTargetSensitive ? '[REDACTED]' : e.key,
+        code: isTargetSensitive ? '[REDACTED]' : e.code
+      });
       return;
     }
 
@@ -383,7 +390,14 @@
    */
   function handleInput(e) {
     if (!isRecording || e.target !== lastInputElement) return;
-    eventSequence.push({ type: 'input', relativeTime: startTime ? Date.now() - startTime : 0, inputType: e.inputType, data: e.data, value: e.target.value });
+    const isTargetSensitive = isSensitive(lastInputElement);
+    eventSequence.push({
+      type: 'input',
+      relativeTime: startTime ? Date.now() - startTime : 0,
+      inputType: e.inputType,
+      data: isTargetSensitive ? '[REDACTED]' : e.data,
+      value: isTargetSensitive ? '[REDACTED]' : e.target.value
+    });
   }
 
   /**
@@ -397,14 +411,17 @@
     const eventTime = startTime ? Date.now() - startTime : 0;
     const pastedText = e.clipboardData?.getData('text') || null;
 
+    const isTargetSensitive = isSensitive(e.target);
+    const safePastedText = isTargetSensitive ? '[REDACTED]' : pastedText;
+
     if (e.target === lastInputElement) {
-      eventSequence.push({ type: 'paste', relativeTime: eventTime, pastedText: pastedText });
+      eventSequence.push({ type: 'paste', relativeTime: eventTime, pastedText: safePastedText });
     } else {
       const pasteData = {
         type: 'paste',
         relativeTime: eventTime,
         element: getElementInfo(e.target),
-        pastedText: pastedText,
+        pastedText: safePastedText,
         url: window.location.href
       };
       saveAction(pasteData);
