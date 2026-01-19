@@ -48,6 +48,10 @@
       opacity: 0.5;
       cursor: not-allowed;
     }
+    button:focus-visible, select:focus-visible {
+      outline: 2px solid #2196F3;
+      outline-offset: 2px;
+    }
     #status {
       padding: 10px;
       margin: 10px 0;
@@ -79,7 +83,7 @@
       align-items: flex-start;
       margin-bottom: 10px;
     }
-    .setting span {
+    .setting label {
       margin-bottom: 5px;
       font-weight: bold;
       font-size: 12px;
@@ -103,12 +107,12 @@
 </head>
 <body>
   <h2>Record Steps</h2>
-  <div id="status" class="idle">Ready to Record</div>
+  <div id="status" class="idle" aria-live="polite">Ready to Record</div>
   <div id="clickCount">Actions recorded: 0</div>
 
   <div class="settings-container">
     <div class="setting">
-      <span>Logging Level</span>
+      <label for="loggingLevel">Logging Level</label>
       <select id="loggingLevel">
         <option value="0">Minimal (Interactions only)</option>
         <option value="1">Standard (+ Focus events)</option>
