@@ -488,13 +488,16 @@
       attributeChangeBuffer = [];
       return;
     }
+
+    const changesToSave = attributeChangeBuffer;
+    attributeChangeBuffer = [];
+
     saveAction({
       type: 'batchAttributeChange',
       relativeTime: startTime ? Date.now() - startTime : 0,
-      changes: attributeChangeBuffer,
+      changes: changesToSave,
       url: window.location.href
     });
-    attributeChangeBuffer = [];
   }
 
   /**
