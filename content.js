@@ -68,12 +68,15 @@
     }
 
     if (element.id) {
-      const idSelector = `#${CSS.escape(element.id)}`;
-      try {
-        if (document.querySelectorAll(idSelector).length === 1) return idSelector;
-      } catch(e) {
-        if (loggingLevel >= 3) {
-          console.warn('Invalid ID selector generated, falling back to path:', idSelector, e);
+      // Ignore IDs that contain long numbers (dynamic) or are very long
+      const isDynamic = /\d{5,}/.test(element.id) || element.id.length > 30;
+
+      if (!isDynamic) {
+        const idSelector = `#${CSS.escape(element.id)}`;
+        try {
+          if (document.querySelectorAll(idSelector).length === 1) return idSelector;
+        } catch(e) {
+          if (loggingLevel >= 3) console.warn('Invalid ID selector:', idSelector);
         }
       }
     }
@@ -150,8 +153,12 @@
       className: (typeof element.className === 'string') ? element.className : (element.className.baseVal || ''),
       id: element.id || null,
       textContent: element.textContent ? element.textContent.trim().substring(0, 200) : null,
-      value: element.value !== undefined ? element.value : null,
+      // REDACT PASSWORD
+      value: (element.type === 'password') ? '[REDACTED]' : (element.value !== undefined ? element.value : null),
       href: element.href || null,
+      // ADD SCROLL METADATA
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
       src: element.src || null,
       alt: element.alt || null,
       title: element.title || null,
@@ -253,6 +260,10 @@
    */
   function handleClick(e) {
     if (!isRecording) return;
+
+    // Force save any pending typing before clicking
+    flushInputEvents();
+
     const clickData = {
       type: 'click',
       relativeTime: startTime ? Date.now() - startTime : 0,
@@ -450,6 +461,32 @@
       observer.observe(document.body, observerConfig);
     }
   }
+
+  // --- Hover Tracking (Debounced) ---
+  let hoverTimeout;
+
+  function handleMouseOver(e) {
+    // Only record hovers if recording is active AND Logging Level is Standard (1) or higher
+    if (!isRecording || loggingLevel < 1) return;
+
+    clearTimeout(hoverTimeout);
+
+    hoverTimeout = setTimeout(() => {
+      // Double check state after the delay
+      if (!isRecording) return;
+
+      const hoverData = {
+        type: 'hover',
+        relativeTime: startTime ? Date.now() - startTime : 0,
+        element: getElementInfo(e.target),
+        url: window.location.href
+      };
+      saveAction(hoverData);
+    }, 500); // 500ms threshold prevents recording accidental mouse movements
+  }
+
+  // Add the listener
+  document.addEventListener('mouseover', handleMouseOver, true);
 
   document.addEventListener('click', handleClick, true);
   document.addEventListener('focus', handleFocus, true);

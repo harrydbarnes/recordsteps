@@ -103,7 +103,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else if (message.action === 'recordAction') {
       const writeOperation = async () => {
         const { clicks } = await chrome.storage.local.get('clicks');
-        const newClicks = [...(clicks || []), message.data];
+
+        // Add context to the action data
+        const enrichedAction = {
+          ...message.data,
+          frameId: sender.frameId,
+          tabId: sender.tab ? sender.tab.id : null,
+          frameUrl: sender.url
+        };
+
+        const newClicks = [...(clicks || []), enrichedAction];
         await chrome.storage.local.set({ clicks: newClicks });
       };
 
