@@ -507,7 +507,7 @@
     const relativeTime = startTime ? batchStartTime - startTime : 0;
 
     // Clean up the temporary property from the first change object
-    if (changesToSave[0].hasOwnProperty('batchStartTime')) {
+    if (Object.hasOwn(changesToSave[0], 'batchStartTime')) {
       delete changesToSave[0].batchStartTime;
     }
 
