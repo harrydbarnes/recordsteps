@@ -10,6 +10,11 @@
  * The async nature allows for top-level await during state initialization.
  */
 (async () => {
+  // --- Constants ---
+  const DYNAMIC_ID_MIN_DIGITS = 5;
+  const DYNAMIC_ID_MAX_LENGTH = 30;
+  const HOVER_DEBOUNCE_MS = 500;
+
   // --- State Initialization ---
   let isRecording = false;
   let startTime = null;
@@ -69,7 +74,8 @@
 
     if (element.id) {
       // Ignore IDs that contain long numbers (dynamic) or are very long
-      const isDynamic = /\d{5,}/.test(element.id) || element.id.length > 30;
+      const dynamicIdPattern = new RegExp(`\\d{${DYNAMIC_ID_MIN_DIGITS},}`);
+      const isDynamic = dynamicIdPattern.test(element.id) || element.id.length > DYNAMIC_ID_MAX_LENGTH;
 
       if (!isDynamic) {
         const idSelector = `#${CSS.escape(element.id)}`;
@@ -482,7 +488,7 @@
         url: window.location.href
       };
       saveAction(hoverData);
-    }, 500); // 500ms threshold prevents recording accidental mouse movements
+    }, HOVER_DEBOUNCE_MS); // threshold prevents recording accidental mouse movements
   }
 
   // Add the listener
