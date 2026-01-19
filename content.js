@@ -14,6 +14,10 @@
   const DYNAMIC_ID_MIN_DIGITS = 5;
   const DYNAMIC_ID_MAX_LENGTH = 30;
   const HOVER_DEBOUNCE_MS = 500;
+  const SENSITIVE_KEYWORDS = ['password', 'card', 'cvv', 'ssn', 'email', 'phone', 'mobile', 'tax', 'social', 'security'];
+
+  // Pre-compiled regex for dynamic IDs to avoid re-creation on every call
+  const dynamicIdPattern = new RegExp(`\\d{${DYNAMIC_ID_MIN_DIGITS},}`);
 
   // --- State Initialization ---
   let isRecording = false;
@@ -51,6 +55,26 @@
   // --- Utility Functions ---
 
   /**
+   * Checks if an element is likely to contain sensitive information.
+   * @param {HTMLElement} element The element to check.
+   * @returns {boolean} True if the element is sensitive, false otherwise.
+   */
+  function isSensitive(element) {
+    if (element.type === 'password') return true;
+
+    const attributesToCheck = ['id', 'name', 'autocomplete', 'type'];
+    for (const attr of attributesToCheck) {
+      if (element.hasAttribute(attr)) {
+         const value = element.getAttribute(attr).toLowerCase();
+         if (SENSITIVE_KEYWORDS.some(keyword => value.includes(keyword))) {
+           return true;
+         }
+      }
+    }
+    return false;
+  }
+
+  /**
    * Generates a unique and stable CSS selector for a given HTML element.
    * It prioritizes test attributes, IDs, then unique class names, and falls back to a path
    * of tag names and nth-of-type pseudo-classes.
@@ -74,7 +98,6 @@
 
     if (element.id) {
       // Ignore IDs that contain long numbers (dynamic) or are very long
-      const dynamicIdPattern = new RegExp(`\\d{${DYNAMIC_ID_MIN_DIGITS},}`);
       const isDynamic = dynamicIdPattern.test(element.id) || element.id.length > DYNAMIC_ID_MAX_LENGTH;
 
       if (!isDynamic) {
@@ -82,7 +105,7 @@
         try {
           if (document.querySelectorAll(idSelector).length === 1) return idSelector;
         } catch(e) {
-          if (loggingLevel >= 3) console.warn('Invalid ID selector:', idSelector);
+          if (loggingLevel >= 3) console.warn('Invalid ID selector:', idSelector, e);
         }
       }
     }
@@ -159,8 +182,8 @@
       className: (typeof element.className === 'string') ? element.className : (element.className.baseVal || ''),
       id: element.id || null,
       textContent: element.textContent ? element.textContent.trim().substring(0, 200) : null,
-      // REDACT PASSWORD
-      value: (element.type === 'password') ? '[REDACTED]' : (element.value !== undefined ? element.value : null),
+      // REDACT SENSITIVE DATA
+      value: isSensitive(element) ? '[REDACTED]' : (element.value !== undefined ? element.value : null),
       href: element.href || null,
       // ADD SCROLL METADATA
       scrollX: window.scrollX,
