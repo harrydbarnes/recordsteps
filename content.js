@@ -63,7 +63,7 @@
   function isSensitive(element) {
     if (element.type === 'password') return true;
 
-    const attributesToCheck = ['id', 'name', 'autocomplete', 'type'];
+    const attributesToCheck = ['id', 'name', 'autocomplete', 'type', 'placeholder', 'aria-label'];
     for (const attr of attributesToCheck) {
       if (element.hasAttribute(attr)) {
          const value = element.getAttribute(attr);
