@@ -412,7 +412,7 @@
     const pastedText = e.clipboardData?.getData('text') || null;
 
     const isTargetSensitive = isSensitive(e.target);
-    const safePastedText = isTargetSensitive ? '[REDACTED]' : pastedText;
+    const safePastedText = isTargetSensitive && pastedText ? '[REDACTED]' : pastedText;
 
     if (e.target === lastInputElement) {
       eventSequence.push({ type: 'paste', relativeTime: eventTime, pastedText: safePastedText });
