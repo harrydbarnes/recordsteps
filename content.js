@@ -491,8 +491,11 @@
    */
   function flushAttributeBuffer() {
     clearTimeout(attributeChangeTimeout);
-    if (!isRecording || loggingLevel < 2 || attributeChangeBuffer.length === 0) {
-      attributeChangeBuffer = [];
+
+    // Check if buffer is empty first. We do NOT check isRecording/loggingLevel here,
+    // because if we have data in the buffer, it means it was valid when added
+    // and should be saved even if recording has just stopped.
+    if (attributeChangeBuffer.length === 0) {
       return;
     }
 
