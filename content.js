@@ -239,7 +239,7 @@
         relativeTime: eventSequence[0].relativeTime,
         element: getElementInfo(lastInputElement),
         events: eventSequence,
-        finalValue: isTargetSensitive ? '[REDACTED]' : lastInputElement.value,
+        finalValue: isTargetSensitive && lastInputElement.value ? '[REDACTED]' : lastInputElement.value,
         url: window.location.href,
       };
       saveAction(sequenceData);
