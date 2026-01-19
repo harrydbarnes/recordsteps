@@ -14,7 +14,8 @@
   const DYNAMIC_ID_MIN_DIGITS = 5;
   const DYNAMIC_ID_MAX_LENGTH = 30;
   const HOVER_DEBOUNCE_MS = 500;
-  const SENSITIVE_KEYWORDS = ['password', 'card', 'cvv', 'ssn', 'email', 'phone', 'mobile', 'tax', 'social', 'security'];
+  // Pre-compiled regex for sensitive data detection (case-insensitive, whole words only)
+  const SENSITIVE_REGEX = /\b(password|card|cvv|ssn|email|phone|mobile|tax|social|security)\b/i;
 
   // Pre-compiled regex for dynamic IDs to avoid re-creation on every call
   const dynamicIdPattern = new RegExp(`\\d{${DYNAMIC_ID_MIN_DIGITS},}`);
@@ -65,8 +66,8 @@
     const attributesToCheck = ['id', 'name', 'autocomplete', 'type'];
     for (const attr of attributesToCheck) {
       if (element.hasAttribute(attr)) {
-         const value = element.getAttribute(attr).toLowerCase();
-         if (SENSITIVE_KEYWORDS.some(keyword => value.includes(keyword))) {
+         const value = element.getAttribute(attr);
+         if (SENSITIVE_REGEX.test(value)) {
            return true;
          }
       }
@@ -463,11 +464,12 @@
   });
 
   /**
-   * Updates the observer's state (connected/disconnected) based on recording status
+   * Updates dynamic listeners (Observer, MouseOver) based on recording status
    * and logging level.
-   * Optimizes performance by disconnecting the observer when not needed.
+   * Optimizes performance by removing listeners when not needed.
    */
-  function updateObserverState() {
+  function updateDynamicListeners() {
+    // 1. Mutation Observer
     observer.disconnect();
 
     // Only connect if we are recording AND logging level is Detailed (2) or Verbose (3)
@@ -488,6 +490,14 @@
       }
 
       observer.observe(document.body, observerConfig);
+    }
+
+    // 2. MouseOver Listener (Hover)
+    document.removeEventListener('mouseover', handleMouseOver, true);
+
+    // Only add if recording is active AND Logging Level is Standard (1) or higher
+    if (isRecording && loggingLevel >= 1) {
+      document.addEventListener('mouseover', handleMouseOver, true);
     }
   }
 
@@ -514,9 +524,6 @@
     }, HOVER_DEBOUNCE_MS); // threshold prevents recording accidental mouse movements
   }
 
-  // Add the listener
-  document.addEventListener('mouseover', handleMouseOver, true);
-
   document.addEventListener('click', handleClick, true);
   document.addEventListener('focus', handleFocus, true);
   document.addEventListener('blur', handleBlur, true);
@@ -524,8 +531,8 @@
   document.addEventListener('keydown', handleKeydown, true);
   document.addEventListener('paste', handlePaste, true);
 
-  // Initialize observer state
-  updateObserverState();
+  // Initialize dynamic listeners state
+  updateDynamicListeners();
 
   /**
    * Listens for changes in chrome.storage to keep the content script's state
@@ -535,22 +542,22 @@
    */
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'local') {
-      let shouldUpdateObserver = false;
+      let shouldUpdate = false;
 
       if (changes.isRecording) {
         isRecording = !!changes.isRecording.newValue;
-        shouldUpdateObserver = true;
+        shouldUpdate = true;
       }
 
       if (changes.startTime) startTime = changes.startTime.newValue || null;
 
       if (changes.loggingLevel) {
         loggingLevel = parseLoggingLevel(changes.loggingLevel.newValue);
-        shouldUpdateObserver = true;
+        shouldUpdate = true;
       }
 
-      if (shouldUpdateObserver) {
-        updateObserverState();
+      if (shouldUpdate) {
+        updateDynamicListeners();
       }
     }
   });
