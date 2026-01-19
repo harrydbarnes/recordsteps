@@ -184,7 +184,7 @@
       id: element.id || null,
       textContent: element.textContent ? element.textContent.trim().substring(0, 200) : null,
       // REDACT SENSITIVE DATA
-      value: isSensitive(element) ? '[REDACTED]' : (element.value !== undefined ? element.value : null),
+      value: isSensitive(element) ? '[REDACTED]' : (element.value != null ? String(element.value).substring(0, 200) : null),
       href: element.href || null,
       // ADD SCROLL METADATA
       scrollX: window.scrollX,
