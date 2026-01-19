@@ -459,12 +459,19 @@
             elementCache.set(mutation.target, elementInfo);
           }
 
-          attributeChangeBuffer.push({
+          const change = {
             element: elementInfo,
             attributeName: attrName,
             oldValue: mutation.oldValue,
             newValue: newValue,
-          });
+          };
+
+          // Use a timestamp from the first change in the batch for better timing accuracy
+          if (attributeChangeBuffer.length === 0) {
+            change.batchStartTime = Date.now();
+          }
+
+          attributeChangeBuffer.push(change);
 
           // 3. Buffer Cap: Flush immediately if buffer gets too big
           if (attributeChangeBuffer.length >= MAX_BATCH_SIZE) {
@@ -492,9 +499,18 @@
     const changesToSave = attributeChangeBuffer;
     attributeChangeBuffer = [];
 
+    // Calculate relative time based on the first change in the batch
+    const batchStartTime = changesToSave[0].batchStartTime || Date.now();
+    const relativeTime = startTime ? batchStartTime - startTime : 0;
+
+    // Clean up the temporary property from the first change object
+    if (changesToSave[0].hasOwnProperty('batchStartTime')) {
+      delete changesToSave[0].batchStartTime;
+    }
+
     saveAction({
       type: 'batchAttributeChange',
-      relativeTime: startTime ? Date.now() - startTime : 0,
+      relativeTime: relativeTime,
       changes: changesToSave,
       url: window.location.href
     });
