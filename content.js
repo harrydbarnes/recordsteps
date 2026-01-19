@@ -430,14 +430,25 @@
 
     clearTimeout(attributeChangeTimeout);
 
+    // Cache getElementInfo results within this batch to avoid redundant layout calculations
+    const elementCache = new Map();
+
     mutations.forEach((mutation) => {
       if (mutation.type === 'attributes') {
         const attrName = mutation.attributeName;
 
         const newValue = mutation.target.getAttribute(attrName);
         if (mutation.oldValue !== newValue) {
+          let elementInfo;
+          if (elementCache.has(mutation.target)) {
+            elementInfo = elementCache.get(mutation.target);
+          } else {
+            elementInfo = getElementInfo(mutation.target);
+            elementCache.set(mutation.target, elementInfo);
+          }
+
           attributeChangeBuffer.push({
-            element: getElementInfo(mutation.target),
+            element: elementInfo,
             attributeName: attrName,
             oldValue: mutation.oldValue,
             newValue: newValue,
