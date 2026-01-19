@@ -11,6 +11,7 @@
  */
 (async () => {
   // --- Constants ---
+  const MAX_BATCH_SIZE = 50;
   const DYNAMIC_ID_MIN_DIGITS = 5;
   const DYNAMIC_ID_MAX_LENGTH = 30;
   const HOVER_DEBOUNCE_MS = 500;
@@ -80,15 +81,19 @@
    * It prioritizes test attributes, IDs, then unique class names, and falls back to a path
    * of tag names and nth-of-type pseudo-classes.
    * @param {HTMLElement} element The element to generate a selector for.
+   * @param {boolean} [skipVerification=false] If true, skips expensive uniqueness checks.
    * @returns {string} A CSS selector string.
    */
-  function getSelector(element) {
+  function getSelector(element, skipVerification = false) {
     // Prioritize test attributes for stability
     const testAttributes = ['data-testid', 'data-cy', 'data-test-id', 'data-test'];
     for (const attr of testAttributes) {
       if (element.hasAttribute(attr)) {
         const value = element.getAttribute(attr);
         const selector = `[${attr}="${CSS.escape(value)}"]`;
+
+        if (skipVerification) return selector;
+
         try {
           if (document.querySelectorAll(selector).length === 1) return selector;
         } catch (e) {
@@ -103,6 +108,9 @@
 
       if (!isDynamic) {
         const idSelector = `#${CSS.escape(element.id)}`;
+
+        if (skipVerification) return idSelector;
+
         try {
           if (document.querySelectorAll(idSelector).length === 1) return idSelector;
         } catch(e) {
@@ -170,14 +178,15 @@
    * Collects a comprehensive set of properties from an HTML element.
    * This includes its selector, dimensions, attributes, and computed styles.
    * @param {HTMLElement} element The element to inspect.
+   * @param {boolean} [skipVerification=false] If true, skips expensive selector verification.
    * @returns {object | null} An object containing detailed information about the element, or null if the element is invalid.
    */
-  function getElementInfo(element) {
+  function getElementInfo(element, skipVerification = false) {
     if (!element) return null;
     const computedStyle = window.getComputedStyle(element);
     const boundingBox = element.getBoundingClientRect();
     const info = {
-      selector: getSelector(element),
+      selector: getSelector(element, skipVerification),
       shadowDOMPath: getShadowDOMPath(element),
       tagName: element.tagName,
       className: (typeof element.className === 'string') ? element.className : (element.className.baseVal || ''),
@@ -430,20 +439,23 @@
 
     clearTimeout(attributeChangeTimeout);
 
-    // Cache getElementInfo results within this batch to avoid redundant layout calculations
+    // 1. Element Cache: Avoid redundant layout calcs for the same element in this batch
     const elementCache = new Map();
 
     mutations.forEach((mutation) => {
       if (mutation.type === 'attributes') {
         const attrName = mutation.attributeName;
-
         const newValue = mutation.target.getAttribute(attrName);
+
         if (mutation.oldValue !== newValue) {
           let elementInfo;
+
+          // Check cache first
           if (elementCache.has(mutation.target)) {
             elementInfo = elementCache.get(mutation.target);
           } else {
-            elementInfo = getElementInfo(mutation.target);
+            // 2. Optimization: Pass 'true' to skip expensive selector verification
+            elementInfo = getElementInfo(mutation.target, true);
             elementCache.set(mutation.target, elementInfo);
           }
 
@@ -453,26 +465,37 @@
             oldValue: mutation.oldValue,
             newValue: newValue,
           });
+
+          // 3. Buffer Cap: Flush immediately if buffer gets too big
+          if (attributeChangeBuffer.length >= MAX_BATCH_SIZE) {
+            flushAttributeBuffer();
+          }
         }
       }
     });
 
-    attributeChangeTimeout = setTimeout(() => {
-      if (!isRecording || loggingLevel < 2) {
-        attributeChangeBuffer = [];
-        return;
-      }
-      if (attributeChangeBuffer.length > 0) {
-        saveAction({
-          type: 'batchAttributeChange',
-          relativeTime: startTime ? Date.now() - startTime : 0,
-          changes: attributeChangeBuffer,
-          url: window.location.href
-        });
-        attributeChangeBuffer = [];
-      }
-    }, 200);
+    if (attributeChangeBuffer.length > 0) {
+      attributeChangeTimeout = setTimeout(flushAttributeBuffer, 200);
+    }
   });
+
+  /**
+   * Flushes the attribute change buffer to the background script.
+   */
+  function flushAttributeBuffer() {
+    clearTimeout(attributeChangeTimeout);
+    if (!isRecording || loggingLevel < 2 || attributeChangeBuffer.length === 0) {
+      attributeChangeBuffer = [];
+      return;
+    }
+    saveAction({
+      type: 'batchAttributeChange',
+      relativeTime: startTime ? Date.now() - startTime : 0,
+      changes: attributeChangeBuffer,
+      url: window.location.href
+    });
+    attributeChangeBuffer = [];
+  }
 
   /**
    * Updates dynamic listeners (Observer, MouseOver) based on recording status
