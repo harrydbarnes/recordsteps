@@ -157,15 +157,16 @@
    * Generates an array of CSS selectors representing the path through
    * nested Shadow DOMs to reach a target element.
    * @param {HTMLElement} element The element to trace the shadow path for.
+   * @param {boolean} [skipVerification=false] If true, skips expensive selector verification.
    * @returns {string[]} An array of selectors for shadow hosts, from the outermost to the innermost.
    */
-  function getShadowDOMPath(element) {
+  function getShadowDOMPath(element, skipVerification = false) {
     const path = [];
     let current = element;
     while (current && current.parentElement) {
       const root = current.getRootNode();
       if (root instanceof ShadowRoot) {
-        path.unshift(getSelector(root.host));
+        path.unshift(getSelector(root.host, skipVerification));
         current = root.host;
       } else {
         break;
@@ -187,7 +188,7 @@
     const boundingBox = element.getBoundingClientRect();
     const info = {
       selector: getSelector(element, skipVerification),
-      shadowDOMPath: getShadowDOMPath(element),
+      shadowDOMPath: getShadowDOMPath(element, skipVerification),
       tagName: element.tagName,
       className: (typeof element.className === 'string') ? element.className : (element.className.baseVal || ''),
       id: element.id || null,
@@ -212,7 +213,7 @@
         top: boundingBox.top,
         left: boundingBox.left,
       },
-      parentElement: element.parentElement ? getSelector(element.parentElement) : null,
+      parentElement: element.parentElement ? getSelector(element.parentElement, skipVerification) : null,
     };
     if (element.attributes) {
       for (let attr of element.attributes) {
