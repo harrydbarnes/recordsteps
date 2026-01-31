@@ -17,7 +17,7 @@
   const HOVER_DEBOUNCE_MS = 500;
   // Pre-compiled regex for sensitive data detection (case-insensitive)
   // Uses non-alphanumeric lookarounds to handle snake_case and kebab-case (e.g., api_key, card-number)
-  const SENSITIVE_REGEX = /(?:^|[^a-zA-Z0-9])(password|card|cvv|cvc|ssn|email|phone|mobile|tax|social|security|api|key|token|secret|auth|otp|pin|credit|cc)(?:$|[^a-zA-Z0-9])/i;
+  const SENSITIVE_REGEX = /(?<![a-zA-Z0-9])(password|card|cvv|cvc|ssn|email|phone|mobile|tax|social|security|api|key|token|secret|auth|otp|pin|credit|cc)(?![a-zA-Z0-9])/i;
 
   // Pre-compiled regex for dynamic IDs to avoid re-creation on every call
   const dynamicIdPattern = new RegExp(`\\d{${DYNAMIC_ID_MIN_DIGITS},}`);
