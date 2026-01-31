@@ -27,6 +27,17 @@
   let startTime = null;
   let eventSequence = [];
   let lastInputElement = null;
+  let lastInputSensitive = false;
+
+  /**
+   * Dedicated observer to detect if the currently focused input
+   * dynamically becomes sensitive (or non-sensitive) due to attribute changes.
+   */
+  const sensitivityObserver = new MutationObserver(() => {
+    if (lastInputElement) {
+      lastInputSensitive = isSensitive(lastInputElement);
+    }
+  });
 
   // 0=Minimal, 1=Standard, 2=Detailed, 3=Verbose
   let loggingLevel = 0;
@@ -244,7 +255,7 @@
    */
   function flushInputEvents() {
     if (lastInputElement && eventSequence.length > 0) {
-      const isTargetSensitive = isSensitive(lastInputElement);
+      const isTargetSensitive = lastInputSensitive;
       const sequenceData = {
         type: 'inputSequence',
         relativeTime: eventSequence[0].relativeTime,
@@ -335,7 +346,17 @@
       flushInputEvents();
     }
 
-    if (isInput) lastInputElement = target;
+    if (isInput) {
+      lastInputElement = target;
+      lastInputSensitive = isSensitive(target);
+
+      // Observe the focused input for attribute changes that might affect sensitivity
+      sensitivityObserver.disconnect();
+      sensitivityObserver.observe(target, {
+        attributes: true,
+        attributeFilter: ['id', 'name', 'autocomplete', 'type', 'placeholder', 'aria-label']
+      });
+    }
     eventSequence = [];
 
     // Only save the Focus event itself if Level >= 1
@@ -361,7 +382,9 @@
   function handleBlur(e) {
     if (!isRecording || e.target !== lastInputElement) return;
     flushInputEvents();
+    sensitivityObserver.disconnect();
     lastInputElement = null;
+    lastInputSensitive = false;
   }
 
   /**
@@ -374,7 +397,7 @@
     const eventTime = startTime ? Date.now() - startTime : 0;
 
     if (e.target === lastInputElement) {
-      const isTargetSensitive = isSensitive(lastInputElement);
+      const isTargetSensitive = lastInputSensitive;
       eventSequence.push({
         type: 'keydown',
         relativeTime: eventTime,
@@ -401,7 +424,7 @@
    */
   function handleInput(e) {
     if (!isRecording || e.target !== lastInputElement) return;
-    const isTargetSensitive = isSensitive(lastInputElement);
+    const isTargetSensitive = lastInputSensitive;
     eventSequence.push({
       type: 'input',
       relativeTime: startTime ? Date.now() - startTime : 0,
@@ -422,7 +445,7 @@
     const eventTime = startTime ? Date.now() - startTime : 0;
     const pastedText = e.clipboardData?.getData('text') || null;
 
-    const isTargetSensitive = isSensitive(e.target);
+    const isTargetSensitive = (e.target === lastInputElement) ? lastInputSensitive : isSensitive(e.target);
     const safePastedText = isTargetSensitive && pastedText ? '[REDACTED]' : pastedText;
 
     if (e.target === lastInputElement) {
