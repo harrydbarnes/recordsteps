@@ -396,7 +396,7 @@
     const eventTime = startTime ? Date.now() - startTime : 0;
 
     if (e.target === lastInputElement) {
-      const isTargetSensitive = lastInputSensitive;
+      const isTargetSensitive = isSensitive(lastInputElement);
       eventSequence.push({
         type: 'keydown',
         relativeTime: eventTime,
