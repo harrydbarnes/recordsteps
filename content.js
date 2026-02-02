@@ -423,7 +423,7 @@
    */
   function handleInput(e) {
     if (!isRecording || e.target !== lastInputElement) return;
-    const isTargetSensitive = lastInputSensitive;
+    const isTargetSensitive = isSensitive(lastInputElement);
     eventSequence.push({
       type: 'input',
       relativeTime: startTime ? Date.now() - startTime : 0,
