@@ -254,7 +254,7 @@
    */
   function flushInputEvents() {
     if (lastInputElement && eventSequence.length > 0) {
-      const isTargetSensitive = lastInputSensitive;
+      const isTargetSensitive = isSensitive(lastInputElement);
       const sequenceData = {
         type: 'inputSequence',
         relativeTime: eventSequence[0].relativeTime,
