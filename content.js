@@ -27,6 +27,17 @@
   let startTime = null;
   let eventSequence = [];
   let lastInputElement = null;
+  let lastInputSensitive = false;
+
+  /**
+   * Dedicated observer to detect if the currently focused input
+   * dynamically becomes sensitive (or non-sensitive) due to attribute changes.
+   */
+  const sensitivityObserver = new MutationObserver(() => {
+    if (lastInputElement) {
+      lastInputSensitive = isSensitive(lastInputElement);
+    }
+  });
 
   // 0=Minimal, 1=Standard, 2=Detailed, 3=Verbose
   let loggingLevel = 0;
@@ -335,7 +346,17 @@
       flushInputEvents();
     }
 
-    if (isInput) lastInputElement = target;
+    if (isInput) {
+      lastInputElement = target;
+      lastInputSensitive = isSensitive(target);
+
+      // Observe the focused input for attribute changes that might affect sensitivity
+      sensitivityObserver.disconnect();
+      sensitivityObserver.observe(target, {
+        attributes: true,
+        attributeFilter: ['id', 'name', 'autocomplete', 'type', 'placeholder', 'aria-label']
+      });
+    }
     eventSequence = [];
 
     // Only save the Focus event itself if Level >= 1
@@ -361,7 +382,9 @@
   function handleBlur(e) {
     if (!isRecording || e.target !== lastInputElement) return;
     flushInputEvents();
+    sensitivityObserver.disconnect();
     lastInputElement = null;
+    lastInputSensitive = false;
   }
 
   /**
