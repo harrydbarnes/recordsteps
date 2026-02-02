@@ -444,7 +444,7 @@
     const eventTime = startTime ? Date.now() - startTime : 0;
     const pastedText = e.clipboardData?.getData('text') || null;
 
-    const isTargetSensitive = (e.target === lastInputElement) ? lastInputSensitive : isSensitive(e.target);
+    const isTargetSensitive = isSensitive(e.target);
     const safePastedText = isTargetSensitive && pastedText ? '[REDACTED]' : pastedText;
 
     if (e.target === lastInputElement) {
