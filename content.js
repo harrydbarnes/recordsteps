@@ -15,7 +15,7 @@
   const DYNAMIC_ID_MIN_DIGITS = 5;
   const DYNAMIC_ID_MAX_LENGTH = 30;
   const HOVER_DEBOUNCE_MS = 500;
-  const SENSITIVE_ATTRIBUTES = ['id', 'name', 'autocomplete', 'type', 'placeholder', 'aria-label'];
+  const SENSITIVE_ATTRIBUTES = ['id', 'name', 'autocomplete', 'type', 'placeholder', 'aria-label', 'title', 'aria-description', 'aria-placeholder'];
   // Pre-compiled regex for sensitive data detection (case-insensitive)
   // Uses non-alphanumeric lookarounds to handle snake_case and kebab-case (e.g., api_key, card-number)
   const SENSITIVE_REGEX = /(?<![a-zA-Z])(password|card|cvv|cvc|ssn|email|phone|mobile|tax|social|security|api|key|token|secret|auth|otp|pin|credit|cc)(?![a-zA-Z])/i;
