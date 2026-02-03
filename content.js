@@ -15,6 +15,7 @@
   const DYNAMIC_ID_MIN_DIGITS = 5;
   const DYNAMIC_ID_MAX_LENGTH = 30;
   const HOVER_DEBOUNCE_MS = 500;
+  const SENSITIVE_ATTRIBUTES = ['id', 'name', 'autocomplete', 'type', 'placeholder', 'aria-label'];
   // Pre-compiled regex for sensitive data detection (case-insensitive)
   // Uses non-alphanumeric lookarounds to handle snake_case and kebab-case (e.g., api_key, card-number)
   const SENSITIVE_REGEX = /(?<![a-zA-Z0-9])(password|card|cvv|cvc|ssn|email|phone|mobile|tax|social|security|api|key|token|secret|auth|otp|pin|credit|cc)(?![a-zA-Z0-9])/i;
@@ -27,17 +28,6 @@
   let startTime = null;
   let eventSequence = [];
   let lastInputElement = null;
-  let lastInputSensitive = false;
-
-  /**
-   * Dedicated observer to detect if the currently focused input
-   * dynamically becomes sensitive (or non-sensitive) due to attribute changes.
-   */
-  const sensitivityObserver = new MutationObserver(() => {
-    if (lastInputElement) {
-      lastInputSensitive = isSensitive(lastInputElement);
-    }
-  });
 
   // 0=Minimal, 1=Standard, 2=Detailed, 3=Verbose
   let loggingLevel = 0;
@@ -76,8 +66,7 @@
   function isSensitive(element) {
     if (element.type === 'password') return true;
 
-    const attributesToCheck = ['id', 'name', 'autocomplete', 'type', 'placeholder', 'aria-label'];
-    for (const attr of attributesToCheck) {
+    for (const attr of SENSITIVE_ATTRIBUTES) {
       if (element.hasAttribute(attr)) {
          const value = element.getAttribute(attr);
          if (SENSITIVE_REGEX.test(value)) {
@@ -348,14 +337,6 @@
 
     if (isInput) {
       lastInputElement = target;
-      lastInputSensitive = isSensitive(target);
-
-      // Observe the focused input for attribute changes that might affect sensitivity
-      sensitivityObserver.disconnect();
-      sensitivityObserver.observe(target, {
-        attributes: true,
-        attributeFilter: ['id', 'name', 'autocomplete', 'type', 'placeholder', 'aria-label']
-      });
     }
     eventSequence = [];
 
@@ -382,9 +363,7 @@
   function handleBlur(e) {
     if (!isRecording || e.target !== lastInputElement) return;
     flushInputEvents();
-    sensitivityObserver.disconnect();
     lastInputElement = null;
-    lastInputSensitive = false;
   }
 
   /**
