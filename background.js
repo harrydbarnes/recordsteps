@@ -16,11 +16,24 @@ try {
  * Sets the default recording state, logging level, and an empty array for clicks.
  * @listens chrome.runtime.onInstalled
  */
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.set({
-    isRecording: false,
-    clicks: [],
-    loggingLevel: LOGGING_LEVELS.MINIMAL // Default to Minimal
+chrome.runtime.onInstalled.addListener(async () => {
+  const existing = await chrome.storage.local.get([
+    'isRecording',
+    'isPaused',
+    'clicks',
+    'actions',
+    'recordingSession',
+    'storageWarning',
+    'loggingLevel'
+  ]);
+  await chrome.storage.local.set({
+    isRecording: existing.isRecording || false,
+    isPaused: existing.isPaused || false,
+    clicks: existing.clicks || [],
+    actions: preferActions(existing.actions, existing.clicks),
+    recordingSession: existing.recordingSession || null,
+    storageWarning: existing.storageWarning || null,
+    loggingLevel: existing.loggingLevel ?? LOGGING_LEVELS.MINIMAL
   });
 });
 
@@ -31,6 +44,31 @@ chrome.runtime.onInstalled.addListener(() => {
  * @type {Promise<void>}
  */
 let recordActionLock = Promise.resolve();
+
+function createSession(tab) {
+  const now = Date.now();
+  return {
+    sessionId: crypto.randomUUID ? crypto.randomUUID() : `session-${now}-${Math.random().toString(16).slice(2)}`,
+    startedAt: new Date(now).toISOString(),
+    endedAt: null,
+    durationMs: 0,
+    sourceUrl: tab?.url || null,
+    browser: 'Chrome',
+    extensionVersion: chrome.runtime.getManifest().version
+  };
+}
+
+async function estimateRecordingSize(actions) {
+  try {
+    return new Blob([JSON.stringify(actions || [])]).size;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function preferActions(actions, clicks) {
+  return Array.isArray(actions) && actions.length > 0 ? actions : (clicks || actions || []);
+}
 
 /**
  * Handles incoming messages from other parts of the extension, like the popup or content scripts.
@@ -79,18 +117,75 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         // ONLY after we are sure the content script is ready, we perform the state change.
         // This is non-destructive and preserves the clicks array.
-        await chrome.storage.local.set({ isRecording: true, startTime: Date.now() });
+        const result = await chrome.storage.local.get(['recordingSession', 'clicks', 'actions']);
+        const session = result.recordingSession?.sessionId ? result.recordingSession : createSession(tab);
+        await chrome.storage.local.set({
+          isRecording: true,
+          isPaused: false,
+          startTime: Date.now(),
+          recordingSession: session,
+          actions: preferActions(result.actions, result.clicks)
+        });
         sendResponse({ success: true });
       } catch (e) {
         console.error(`Error starting recording: ${e.message}`);
         sendResponse({ success: false, error: e.message });
       }
+    } else if (message.action === 'startNewRecording') {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        await chrome.storage.local.set({
+          isRecording: false,
+          isPaused: false,
+          clicks: [],
+          actions: [],
+          storageWarning: null
+        });
+        if (tab) {
+          const frames = await chrome.webNavigation.getAllFrames({ tabId: tab.id });
+          for (const frame of frames) {
+            if (!frame.url || !frame.url.startsWith('http')) {
+              continue;
+            }
+            try {
+              await chrome.scripting.executeScript({
+                target: { tabId: tab.id, frameIds: [frame.frameId] },
+                files: ['constants.js', 'content.js'],
+              });
+            } catch (e) {
+              if (!e.message.includes('already injected')) {
+                console.warn(`Could not inject script in frame ${frame.frameId} (${frame.url}): ${e.message}`);
+              }
+            }
+          }
+        }
+        await chrome.storage.local.set({
+          isRecording: true,
+          isPaused: false,
+          clicks: [],
+          actions: [],
+          startTime: Date.now(),
+          recordingSession: createSession(tab),
+          storageWarning: null
+        });
+        sendResponse({ success: true });
+      } catch (e) {
+        console.error(`Error starting new recording: ${e.message}`);
+        sendResponse({ success: false, error: e.message });
+      }
     // Handles the 'stopRecording' action. Resets the recording state and removes the start time.
     } else if (message.action === 'stopRecording') {
       try {
+        const { recordingSession, startTime } = await chrome.storage.local.get(['recordingSession', 'startTime']);
+        const stoppedAt = Date.now();
+        const completedSession = recordingSession ? {
+          ...recordingSession,
+          endedAt: new Date(stoppedAt).toISOString(),
+          durationMs: startTime ? stoppedAt - startTime : recordingSession.durationMs || 0
+        } : null;
         // Clear recording state in parallel for efficiency.
         await Promise.all([
-          chrome.storage.local.set({ isRecording: false }),
+          chrome.storage.local.set({ isRecording: false, isPaused: false, recordingSession: completedSession }),
           chrome.storage.local.remove('startTime')
         ]);
         sendResponse({ success: true });
@@ -98,14 +193,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         console.error(`Error stopping recording: ${e.message}`);
         sendResponse({ success: false, error: e.message });
       }
+    } else if (message.action === 'pauseRecording') {
+      try {
+        await chrome.storage.local.set({ isPaused: true });
+        sendResponse({ success: true });
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
+    } else if (message.action === 'resumeRecording') {
+      try {
+        await chrome.storage.local.set({ isPaused: false });
+        sendResponse({ success: true });
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
     // Handles the 'recordAction' action. Appends a new action's data to the 'clicks'
     // array in storage. Uses a lock to prevent race conditions.
     } else if (message.action === 'recordAction') {
       const writeOperation = async () => {
-        const { clicks } = await chrome.storage.local.get('clicks');
+        const { clicks, actions, recordingSession } = await chrome.storage.local.get(['clicks', 'actions', 'recordingSession']);
 
         // Add context to the action data
         const enrichedAction = {
+          actionId: crypto.randomUUID ? crypto.randomUUID() : `action-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          sessionId: recordingSession?.sessionId || null,
+          recordedAt: new Date().toISOString(),
           ...message.data,
           frameId: sender.frameId,
           tabId: sender.tab ? sender.tab.id : null,
@@ -113,7 +225,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         };
 
         const newClicks = [...(clicks || []), enrichedAction];
-        await chrome.storage.local.set({ clicks: newClicks });
+        const newActions = [...preferActions(actions, clicks), enrichedAction];
+        const estimatedSize = await estimateRecordingSize(newActions);
+        const storageWarning = estimatedSize > 4 * 1024 * 1024
+          ? `Recording is ${(estimatedSize / 1024 / 1024).toFixed(1)} MB and may approach Chrome storage limits.`
+          : null;
+        await chrome.storage.local.set({ clicks: newClicks, actions: newActions, storageWarning });
       };
 
       // Chain the new write operation onto the lock.

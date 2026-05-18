@@ -9,12 +9,19 @@
  * sets up all event listeners, and handles communication with the background script.
  * The async nature allows for top-level await during state initialization.
  */
+if (window.__recordStepsContentLoaded) {
+  if (window.__recordStepsLoggingLevel >= LOGGING_LEVELS.VERBOSE) {
+    console.debug('Record Steps content script already loaded; skipping duplicate listener registration.');
+  }
+} else {
+window.__recordStepsContentLoaded = true;
 (async () => {
   // --- Constants ---
   const MAX_BATCH_SIZE = 50;
   const DYNAMIC_ID_MIN_DIGITS = 5;
   const DYNAMIC_ID_MAX_LENGTH = 30;
   const HOVER_DEBOUNCE_MS = 500;
+  const SCROLL_DEBOUNCE_MS = 350;
   const SENSITIVE_ATTRIBUTES = ['id', 'name', 'autocomplete', 'type', 'placeholder', 'aria-label', 'title', 'aria-description', 'aria-placeholder'];
   // Pre-compiled regex for sensitive data detection (case-insensitive)
   // Uses non-alphanumeric lookarounds to handle snake_case and kebab-case (e.g., api_key, card-number)
@@ -28,6 +35,12 @@
   let startTime = null;
   let eventSequence = [];
   let lastInputElement = null;
+  let isPaused = false;
+  let privacyOptions = {
+    redactTypedText: true,
+    redactPageText: true,
+    includeDebugAttributes: false
+  };
 
   // 0=Minimal, 1=Standard, 2=Detailed, 3=Verbose
   let loggingLevel = 0;
@@ -47,10 +60,13 @@
   }
 
   try {
-    const result = await chrome.storage.local.get(['isRecording', 'startTime', 'loggingLevel']);
+    const result = await chrome.storage.local.get(['isRecording', 'isPaused', 'startTime', 'loggingLevel', 'privacyOptions']);
     isRecording = result.isRecording || false;
+    isPaused = result.isPaused || false;
     startTime = result.startTime || null;
     loggingLevel = parseLoggingLevel(result.loggingLevel);
+    window.__recordStepsLoggingLevel = loggingLevel;
+    privacyOptions = { ...privacyOptions, ...(result.privacyOptions || {}) };
   } catch (e) {
     console.error(`Error initializing content script state: ${e.message}`);
     return;
@@ -64,6 +80,7 @@
    * @returns {boolean} True if the element is sensitive, false otherwise.
    */
   function isSensitive(element) {
+    if (!element || element.nodeType !== Node.ELEMENT_NODE) return false;
     if (element.type === 'password') return true;
 
     for (const attr of SENSITIVE_ATTRIBUTES) {
@@ -75,6 +92,10 @@
       }
     }
     return false;
+  }
+
+  function shouldRecord() {
+    return isRecording && !isPaused;
   }
 
   /**
@@ -154,6 +175,69 @@
     return path.join(' > ');
   }
 
+  function getAccessibleName(element) {
+    const aria = element.getAttribute('aria-label') || element.getAttribute('aria-labelledby');
+    if (aria) return aria.trim().substring(0, 120);
+    if (element.labels && element.labels.length > 0) {
+      return Array.from(element.labels).map(label => label.textContent.trim()).join(' ').substring(0, 120);
+    }
+    return (element.innerText || element.textContent || element.getAttribute('placeholder') || element.getAttribute('title') || '').trim().substring(0, 120);
+  }
+
+  function isUniqueSelector(selector) {
+    try {
+      return document.querySelectorAll(selector).length === 1;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function addSelectorCandidate(candidates, type, selector, reason, confidence) {
+    if (!selector || candidates.some(candidate => candidate.selector === selector)) return;
+    candidates.push({ type, selector, reason, confidence });
+  }
+
+  function getSelectorCandidates(element, skipVerification = false) {
+    const candidates = [];
+    const testAttributes = ['data-testid', 'data-cy', 'data-test-id', 'data-test'];
+
+    for (const attr of testAttributes) {
+      if (element.hasAttribute(attr)) {
+        const selector = `[${attr}="${CSS.escape(element.getAttribute(attr))}"]`;
+        const unique = skipVerification || isUniqueSelector(selector);
+        addSelectorCandidate(candidates, attr, selector, unique ? 'Stable test attribute' : 'Test attribute is not unique', unique ? 0.98 : 0.72);
+      }
+    }
+
+    const role = element.getAttribute('role') || {
+      A: 'link',
+      BUTTON: 'button',
+      INPUT: element.type === 'submit' || element.type === 'button' ? 'button' : 'textbox',
+      SELECT: 'combobox',
+      TEXTAREA: 'textbox'
+    }[element.tagName];
+    const accessibleName = getAccessibleName(element);
+    if (role && accessibleName && !isSensitive(element)) {
+      addSelectorCandidate(candidates, 'role', `role=${role}; name=${accessibleName}`, 'Preferred automation locator hint', 0.9);
+    }
+
+    if (element.id) {
+      const selector = `#${CSS.escape(element.id)}`;
+      const isDynamic = dynamicIdPattern.test(element.id) || element.id.length > DYNAMIC_ID_MAX_LENGTH;
+      const unique = skipVerification || isUniqueSelector(selector);
+      addSelectorCandidate(candidates, 'id', selector, isDynamic ? 'ID looks dynamic' : 'Element ID', !isDynamic && unique ? 0.88 : 0.48);
+    }
+
+    const cssPath = getSelector(element, skipVerification);
+    addSelectorCandidate(candidates, 'css', cssPath, 'Generated CSS fallback', cssPath.includes('nth-of-type') ? 0.45 : 0.68);
+
+    if (accessibleName && !isSensitive(element)) {
+      addSelectorCandidate(candidates, 'text', accessibleName, 'Visible or accessible text hint', 0.55);
+    }
+
+    return candidates.sort((a, b) => b.confidence - a.confidence);
+  }
+
   /**
    * Generates an array of CSS selectors representing the path through
    * nested Shadow DOMs to reach a target element.
@@ -176,6 +260,24 @@
     return path;
   }
 
+  function safeText(element, text) {
+    if (!text) return null;
+    const trimmed = text.trim().replace(/\s+/g, ' ').substring(0, 200);
+    if (!trimmed) return null;
+    if (privacyOptions.redactPageText && (isSensitive(element) || SENSITIVE_REGEX.test(trimmed))) {
+      return '[REDACTED]';
+    }
+    return trimmed;
+  }
+
+  function safeValue(element, value) {
+    if (value == null) return null;
+    if (privacyOptions.redactTypedText && isSensitive(element)) {
+      return '[REDACTED]';
+    }
+    return String(value).substring(0, 200);
+  }
+
   /**
    * Collects a comprehensive set of properties from an HTML element.
    * This includes its selector, dimensions, attributes, and computed styles.
@@ -185,17 +287,24 @@
    */
   function getElementInfo(element, skipVerification = false) {
     if (!element) return null;
+    const cssSelector = getSelector(element, skipVerification);
+    const selectorCandidates = getSelectorCandidates(element, skipVerification);
+    const bestSelector = selectorCandidates[0] || null;
     const computedStyle = window.getComputedStyle(element);
     const boundingBox = element.getBoundingClientRect();
     const info = {
-      selector: getSelector(element, skipVerification),
+      selector: cssSelector,
+      automationSelector: bestSelector?.selector || cssSelector,
+      selectorCandidates,
+      selectorConfidence: bestSelector?.confidence || 0,
+      selectorReason: bestSelector?.reason || 'No selector candidate available',
       shadowDOMPath: getShadowDOMPath(element, skipVerification),
       tagName: element.tagName,
       className: (typeof element.className === 'string') ? element.className : (element.className.baseVal || ''),
       id: element.id || null,
-      textContent: element.textContent ? element.textContent.trim().substring(0, 200) : null,
+      textContent: safeText(element, element.textContent),
       // REDACT SENSITIVE DATA
-      value: isSensitive(element) ? '[REDACTED]' : (element.value != null ? String(element.value).substring(0, 200) : null),
+      value: safeValue(element, element.value),
       href: element.href || null,
       // ADD SCROLL METADATA
       scrollX: window.scrollX,
@@ -219,8 +328,14 @@
     if (element.attributes) {
       for (let attr of element.attributes) {
         if (attr.name.startsWith('data-')) {
-          info.dataAttributes[attr.name] = attr.value;
+          info.dataAttributes[attr.name] = SENSITIVE_REGEX.test(attr.name) || SENSITIVE_REGEX.test(attr.value) ? '[REDACTED]' : attr.value;
         }
+      }
+    }
+    if (privacyOptions.includeDebugAttributes && element.attributes) {
+      info.attributes = {};
+      for (let attr of element.attributes) {
+        info.attributes[attr.name] = SENSITIVE_REGEX.test(attr.name) || SENSITIVE_REGEX.test(attr.value) ? '[REDACTED]' : attr.value;
       }
     }
     return info;
@@ -290,7 +405,7 @@
       `;
       document.head.appendChild(style);
     }
-    document.body.appendChild(indicator);
+    (document.body || document.documentElement).appendChild(indicator);
     setTimeout(() => indicator.remove(), 500);
   }
 
@@ -301,7 +416,7 @@
    * @param {MouseEvent} e The mouse event object.
    */
   function handleClick(e) {
-    if (!isRecording) return;
+    if (!shouldRecord()) return;
 
     // Force save any pending typing before clicking
     flushInputEvents();
@@ -310,6 +425,11 @@
       type: 'click',
       relativeTime: startTime ? Date.now() - startTime : 0,
       element: getElementInfo(e.target),
+      button: e.button,
+      ctrlKey: e.ctrlKey,
+      shiftKey: e.shiftKey,
+      altKey: e.altKey,
+      metaKey: e.metaKey,
       url: window.location.href
     };
     saveAction(clickData);
@@ -324,7 +444,7 @@
   function handleFocus(e) {
     const target = e.target;
     // Log focus if recording AND (input element OR Level 1+ Standard Logging)
-    if (!isRecording) return;
+    if (!shouldRecord()) return;
 
     // Always track inputs for typing sequences regardless of level
     const isInput = (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
@@ -361,7 +481,7 @@
    * @param {FocusEvent} e The focus event object.
    */
   function handleBlur(e) {
-    if (!isRecording || e.target !== lastInputElement) return;
+    if (!shouldRecord() || e.target !== lastInputElement) return;
     flushInputEvents();
     lastInputElement = null;
   }
@@ -372,7 +492,7 @@
    * @param {KeyboardEvent} e The keyboard event object.
    */
   function handleKeydown(e) {
-    if (!isRecording) return;
+    if (!shouldRecord()) return;
     const eventTime = startTime ? Date.now() - startTime : 0;
 
     if (e.target === lastInputElement) {
@@ -402,14 +522,14 @@
    * @param {InputEvent} e The input event object.
    */
   function handleInput(e) {
-    if (!isRecording || e.target !== lastInputElement) return;
+    if (!shouldRecord() || e.target !== lastInputElement) return;
     const isTargetSensitive = isSensitive(lastInputElement);
     eventSequence.push({
       type: 'input',
       relativeTime: startTime ? Date.now() - startTime : 0,
       inputType: e.inputType,
-      data: isTargetSensitive && e.data ? '[REDACTED]' : e.data,
-      value: isTargetSensitive && e.target.value ? '[REDACTED]' : e.target.value
+      data: privacyOptions.redactTypedText && isTargetSensitive && e.data ? '[REDACTED]' : e.data,
+      value: safeValue(e.target, e.target.value)
     });
   }
 
@@ -420,12 +540,12 @@
    * @param {ClipboardEvent} e The clipboard event object.
    */
   function handlePaste(e) {
-    if (!isRecording) return;
+    if (!shouldRecord()) return;
     const eventTime = startTime ? Date.now() - startTime : 0;
     const pastedText = e.clipboardData?.getData('text') || null;
 
     const isTargetSensitive = isSensitive(e.target);
-    const safePastedText = isTargetSensitive && pastedText ? '[REDACTED]' : pastedText;
+    const safePastedText = privacyOptions.redactTypedText && isTargetSensitive && pastedText ? '[REDACTED]' : pastedText;
 
     if (e.target === lastInputElement) {
       eventSequence.push({ type: 'paste', relativeTime: eventTime, pastedText: safePastedText });
@@ -443,6 +563,82 @@
     showFeedback(rect.left + 10, rect.top + 10, '#0000ff');
   }
 
+  function handleChange(e) {
+    if (!shouldRecord()) return;
+    const target = e.target;
+    if (!target || !['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName)) return;
+
+    const changeData = {
+      type: 'change',
+      relativeTime: startTime ? Date.now() - startTime : 0,
+      element: getElementInfo(target),
+      value: safeValue(target, target.type === 'checkbox' || target.type === 'radio' ? target.checked : target.value),
+      checked: target.checked ?? null,
+      url: window.location.href,
+      waitHint: 'Wait for any UI state that depends on this value change.'
+    };
+    saveAction(changeData);
+  }
+
+  function handleSubmit(e) {
+    if (!shouldRecord()) return;
+    saveAction({
+      type: 'submit',
+      relativeTime: startTime ? Date.now() - startTime : 0,
+      element: getElementInfo(e.target),
+      url: window.location.href,
+      waitHint: 'Wait for navigation or a success/error state after form submission.'
+    });
+  }
+
+  function handleDoubleClick(e) {
+    if (!shouldRecord()) return;
+    flushInputEvents();
+    saveAction({
+      type: 'dblclick',
+      relativeTime: startTime ? Date.now() - startTime : 0,
+      element: getElementInfo(e.target),
+      button: e.button,
+      ctrlKey: e.ctrlKey,
+      shiftKey: e.shiftKey,
+      altKey: e.altKey,
+      metaKey: e.metaKey,
+      url: window.location.href
+    });
+    showFeedback(e.clientX, e.clientY, '#ff8800');
+  }
+
+  function handleContextMenu(e) {
+    if (!shouldRecord()) return;
+    saveAction({
+      type: 'contextmenu',
+      relativeTime: startTime ? Date.now() - startTime : 0,
+      element: getElementInfo(e.target),
+      ctrlKey: e.ctrlKey,
+      shiftKey: e.shiftKey,
+      altKey: e.altKey,
+      metaKey: e.metaKey,
+      url: window.location.href
+    });
+  }
+
+  let scrollTimeout;
+  function handleScroll() {
+    if (!shouldRecord()) return;
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(() => {
+      if (!shouldRecord()) return;
+      saveAction({
+        type: 'scroll',
+        relativeTime: startTime ? Date.now() - startTime : 0,
+        scrollX: window.scrollX,
+        scrollY: window.scrollY,
+        url: window.location.href,
+        waitHint: 'Wait until the target content is visible before continuing.'
+      });
+    }, SCROLL_DEBOUNCE_MS);
+  }
+
   // --- Mutation Observer for Attributes (Level 2 & 3) ---
 
   let attributeChangeTimeout = null;
@@ -456,7 +652,7 @@
    */
   const observer = new MutationObserver((mutations) => {
     // If Minimal (0) or Standard (1), do NOT record attribute changes.
-    if (!isRecording || loggingLevel < 2) return;
+    if (!shouldRecord() || loggingLevel < 2) return;
 
     clearTimeout(attributeChangeTimeout);
 
@@ -550,7 +746,7 @@
     observer.disconnect();
 
     // Only connect if we are recording AND logging level is Detailed (2) or Verbose (3)
-    if (isRecording && loggingLevel >= 2) {
+    if (shouldRecord() && loggingLevel >= 2) {
       const observerConfig = {
         attributes: true,
         attributeOldValue: true,
@@ -566,14 +762,14 @@
         ];
       }
 
-      observer.observe(document.body, observerConfig);
+      observer.observe(document.body || document.documentElement, observerConfig);
     }
 
     // 2. MouseOver Listener (Hover)
     document.removeEventListener('mouseover', handleMouseOver, true);
 
     // Only add if recording is active AND Logging Level is Standard (1) or higher
-    if (isRecording && loggingLevel >= 1) {
+    if (shouldRecord() && loggingLevel >= 1) {
       document.addEventListener('mouseover', handleMouseOver, true);
     }
   }
@@ -583,13 +779,13 @@
 
   function handleMouseOver(e) {
     // Only record hovers if recording is active AND Logging Level is Standard (1) or higher
-    if (!isRecording || loggingLevel < 1) return;
+    if (!shouldRecord() || loggingLevel < 1) return;
 
     clearTimeout(hoverTimeout);
 
     hoverTimeout = setTimeout(() => {
       // Double check state after the delay
-      if (!isRecording) return;
+      if (!shouldRecord()) return;
 
       const hoverData = {
         type: 'hover',
@@ -607,6 +803,11 @@
   document.addEventListener('input', handleInput, true);
   document.addEventListener('keydown', handleKeydown, true);
   document.addEventListener('paste', handlePaste, true);
+  document.addEventListener('change', handleChange, true);
+  document.addEventListener('submit', handleSubmit, true);
+  document.addEventListener('dblclick', handleDoubleClick, true);
+  document.addEventListener('contextmenu', handleContextMenu, true);
+  document.addEventListener('scroll', handleScroll, true);
 
   // Initialize dynamic listeners state
   updateDynamicListeners();
@@ -620,9 +821,23 @@
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'local') {
       let shouldUpdate = false;
+      const wasRecording = isRecording;
 
       if (changes.isRecording) {
+        if (!changes.isRecording.newValue) {
+          flushInputEvents();
+          flushAttributeBuffer();
+        }
         isRecording = !!changes.isRecording.newValue;
+        shouldUpdate = true;
+      }
+
+      if (changes.isPaused) {
+        isPaused = !!changes.isPaused.newValue;
+        if (isPaused) {
+          flushInputEvents();
+          flushAttributeBuffer();
+        }
         shouldUpdate = true;
       }
 
@@ -630,11 +845,26 @@
 
       if (changes.loggingLevel) {
         loggingLevel = parseLoggingLevel(changes.loggingLevel.newValue);
+        window.__recordStepsLoggingLevel = loggingLevel;
         shouldUpdate = true;
+      }
+
+      if (changes.privacyOptions) {
+        privacyOptions = { ...privacyOptions, ...(changes.privacyOptions.newValue || {}) };
       }
 
       if (shouldUpdate) {
         updateDynamicListeners();
+      }
+
+      if (!wasRecording && shouldRecord()) {
+        saveAction({
+          type: 'pageLoad',
+          relativeTime: startTime ? Date.now() - startTime : 0,
+          url: window.location.href,
+          title: privacyOptions.redactPageText && SENSITIVE_REGEX.test(document.title) ? '[REDACTED]' : document.title,
+          waitHint: 'Wait for the page to finish loading before replaying following actions.'
+        });
       }
     }
   });
@@ -643,8 +873,15 @@
    * On initial script injection, if recording is already active,
    * log a 'pageLoad' event to mark the entry point.
    */
-  if (isRecording) {
-    saveAction({ type: 'pageLoad', relativeTime: startTime ? Date.now() - startTime : 0, url: window.location.href, title: document.title });
+  if (shouldRecord()) {
+    saveAction({
+      type: 'pageLoad',
+      relativeTime: startTime ? Date.now() - startTime : 0,
+      url: window.location.href,
+      title: privacyOptions.redactPageText && SENSITIVE_REGEX.test(document.title) ? '[REDACTED]' : document.title,
+      waitHint: 'Wait for the page to finish loading before replaying following actions.'
+    });
   }
 
 })();
+}

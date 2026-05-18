@@ -3,24 +3,39 @@
 <head>
   <style>
     body {
-      width: 320px;
-      padding: 16px;
+      width: 380px;
+      padding: 12px;
       font-family: Arial, sans-serif;
+      color: #202124;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
     }
     h2 {
-      margin: 0 0 12px 0;
+      margin: 0;
       font-size: 16px;
     }
     button {
-      width: 100%;
       padding: 10px;
-      margin: 6px 0;
+      margin: 3px 0;
       border: none;
       border-radius: 4px;
       cursor: pointer;
       font-size: 14px;
       font-weight: 600;
       transition: background-color 0.3s ease;
+    }
+    .button-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px 8px;
+    }
+    .button-grid button, .full-width {
+      width: 100%;
     }
     #startBtn {
       background: #ff4087;
@@ -29,15 +44,23 @@
     #startBtn:hover {
       background: #e03879;
     }
+    #newBtn {
+      background: #7b61ff;
+      color: white;
+    }
+    #pauseBtn, #resumeBtn {
+      background: #fbbc04;
+      color: #202124;
+    }
     #stopBtn {
       background: #f44336;
       color: white;
     }
-    #downloadBtn {
+    #downloadBtn, #copyBtn {
       background: #76abaf;
       color: white;
     }
-    #downloadBtn:hover {
+    #downloadBtn:hover, #copyBtn:hover {
       background: #66969b;
     }
     #clearBtn {
@@ -48,40 +71,67 @@
       opacity: 0.5;
       cursor: not-allowed;
     }
-    button:focus-visible, select:focus-visible {
+    button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible {
       outline: 2px solid #2196F3;
       outline-offset: 2px;
     }
     #status {
-      padding: 10px;
-      margin: 10px 0;
+      padding: 6px 9px;
+      margin: 0;
       border-radius: 4px;
       text-align: center;
       font-weight: 600;
+      font-size: 12px;
+      white-space: nowrap;
     }
     .recording {
       background: #ffebee;
       color: #c62828;
     }
+    .paused {
+      background: #fff8e1;
+      color: #8a5a00;
+    }
     .idle {
       background: #e8f5e9;
       color: #2e7d32;
     }
-    #clickCount {
-      margin: 10px 0;
-      font-size: 14px;
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 10px;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: #fafafa;
+    }
+    #clickCount, #duration, #currentUrl, #lastAction, #typeCounts, #storageWarning {
+      margin: 0;
+      font-size: 13px;
       color: #666;
+      overflow-wrap: anywhere;
+    }
+    #currentUrl, #lastAction, #typeCounts, #storageWarning {
+      grid-column: 1 / -1;
+    }
+    #storageWarning {
+      color: #b06000;
+      font-weight: 600;
     }
     .settings-container {
-      margin-top: 15px;
-      padding-top: 10px;
-      border-top: 1px solid #ccc;
+      margin-top: 8px;
+      padding-top: 0;
+    }
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
     }
     .setting {
       display: flex;
-      flex-direction: column; /* Stack label and select */
+      flex-direction: column;
       align-items: flex-start;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
     .setting label {
       margin-bottom: 5px;
@@ -89,13 +139,29 @@
       font-size: 12px;
       color: #333;
     }
-    select {
+    select, textarea {
       width: 100%;
-      padding: 8px;
+      padding: 7px;
       border-radius: 4px;
       border: 1px solid #ccc;
       font-size: 14px;
       background-color: white;
+      box-sizing: border-box;
+    }
+    textarea {
+      resize: vertical;
+      min-height: 40px;
+      font-family: Arial, sans-serif;
+    }
+    .checkbox-setting {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      font-size: 13px;
+      margin: 8px 0;
+    }
+    .checkbox-setting input {
+      margin: 0;
     }
     #loggingDescription {
       margin-top: 5px;
@@ -106,28 +172,61 @@
   </style>
 </head>
 <body>
-  <h2>Record Steps</h2>
-  <div id="status" class="idle" aria-live="polite" aria-atomic="true">Ready to Record</div>
-  <div id="clickCount">Actions recorded: 0</div>
+  <div class="header">
+    <h2>Record Steps</h2>
+    <div id="status" class="idle" aria-live="polite" aria-atomic="true">Ready to Record</div>
+  </div>
+  <div class="stats">
+    <div id="clickCount">Actions recorded: 0</div>
+    <div id="duration">Duration: 0s</div>
+    <div id="currentUrl">URL: -</div>
+    <div id="lastAction">Last action: -</div>
+    <div id="typeCounts">Types: -</div>
+    <div id="storageWarning" hidden></div>
+  </div>
 
   <div class="settings-container">
     <div class="setting">
-      <label for="loggingLevel">Logging Level</label>
-      <select id="loggingLevel">
-        <option value="0">Minimal (Interactions only)</option>
-        <option value="1">Standard (+ Focus events)</option>
-        <option value="2">Detailed (+ State changes)</option>
-        <option value="3">Verbose (Everything/Debug)</option>
-      </select>
-      <div id="loggingDescription">Records clicks, typing, and navigation. Best for clean test scripts.</div>
+      <label for="goalInput">Goal</label>
+      <textarea id="goalInput" placeholder="What should a coder automate from this recording?"></textarea>
     </div>
+    <div class="settings-grid">
+      <div class="setting">
+        <label for="loggingLevel">Logging Level</label>
+        <select id="loggingLevel">
+          <option value="0">Minimal</option>
+          <option value="1">Standard</option>
+          <option value="2">Detailed</option>
+          <option value="3">Verbose</option>
+        </select>
+      </div>
+      <div class="setting">
+        <label for="exportFormat">Export Format</label>
+        <select id="exportFormat">
+          <option value="legacy">Legacy JSON</option>
+          <option value="automation">Automation JSON</option>
+          <option value="markdown">Codex/Jules Markdown</option>
+          <option value="playwright">Playwright Draft</option>
+        </select>
+      </div>
+    </div>
+    <div id="loggingDescription">Records clicks, typing, and navigation. Best for clean test scripts.</div>
+    <label class="checkbox-setting"><input type="checkbox" id="redactTypedText" checked> Redact sensitive typed text</label>
+    <label class="checkbox-setting"><input type="checkbox" id="redactPageText" checked> Redact sensitive page text</label>
+    <label class="checkbox-setting"><input type="checkbox" id="includeDebugAttributes"> Include debug attributes</label>
   </div>
 
-  <button id="startBtn">Start Recording</button>
-  <button id="stopBtn" disabled>Stop Recording</button>
-  <button id="downloadBtn">Download Recording</button>
-  <button id="clearBtn">Clear Recording</button>
-  
+  <div class="button-grid">
+    <button id="startBtn">Start</button>
+    <button id="newBtn">Start New</button>
+    <button id="pauseBtn" disabled>Pause</button>
+    <button id="resumeBtn" disabled>Resume</button>
+    <button id="stopBtn" disabled>Stop</button>
+    <button id="clearBtn">Clear</button>
+    <button id="downloadBtn">Download Export</button>
+    <button id="copyBtn">Copy Export</button>
+  </div>
+
   <script src="constants.js"></script>
   <script src="popup.js"></script>
 </body>
